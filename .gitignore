@@ -1,0 +1,24 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio / user files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs and temp
+*.log
+*.tmp
+*.bak
+*.old
+Desktop.ini
+Thumbs.db
+
+# Local dev scratch (harness, scripts, captures) - never commit
+TestPlayer*.*
+shot_*.png
+crop_*.png
+*.ps1

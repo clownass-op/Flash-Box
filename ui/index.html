@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FlashBox</title>
+<style>
+:root{
+  --bg:#0A0C14;
+  --panel:#10131F;
+  --panel-2:#0D0F19;
+  --rail:#0B0D17;
+  --border:#232B42;
+  --border-soft:#1B2136;
+  --accent-1:#FF6B7D;
+  --accent-2:#D6455C;
+  --accent-3:#B23347;
+  --text:#E7EAF2;
+  --text-dim:#7C8399;
+  --text-faint:#4B5169;
+  --glow:rgba(214,69,92,.30);
+  --sel-bg:rgba(214,69,92,0.10);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text-dim);display:flex;flex-direction:column;height:100vh;overflow:hidden;font-size:13px;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+::-webkit-scrollbar-thumb:hover{background:var(--accent-2);}
+
+/* ---- titlebar ---- */
+.titlebar{height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#0A0E1A,#060912);padding:0 6px 0 12px;border-bottom:1px solid var(--border-soft);-webkit-app-region:drag;position:relative;}
+.titlebar::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;background:linear-gradient(90deg,transparent,var(--accent-2) 20%,var(--accent-1) 50%,var(--accent-2) 80%,transparent);opacity:.55;}
+.brand{display:flex;align-items:center;gap:8px;}
+.brand-mark{width:20px;height:20px;border-radius:5px;flex-shrink:0;background:linear-gradient(135deg,var(--accent-1),var(--accent-3));position:relative;box-shadow:0 0 12px var(--glow);}
+.brand-mark::before{content:'';position:absolute;inset:5px;border-radius:2px;background:var(--bg);}
+.brand-text{font-size:12px;font-weight:700;letter-spacing:3px;background:linear-gradient(90deg,var(--accent-1),var(--accent-3));-webkit-background-clip:text;background-clip:text;color:transparent;}
+.menu{display:flex;align-items:center;gap:4px;margin-left:14px;-webkit-app-region:no-drag;}
+.menu button{background:transparent;border:1px solid transparent;color:var(--text-dim);padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;}
+.menu button:hover{border-color:var(--border);color:var(--accent-1);}
+.win-controls{display:flex;-webkit-app-region:no-drag;}
+.win-btn{width:38px;height:28px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;cursor:pointer;color:var(--text-faint);}
+.win-btn:hover{background:rgba(255,255,255,.08);color:var(--text);}
+.win-btn.close{color:var(--text-faint);}
+.win-btn.close:hover{background:var(--accent-2);color:#fff;}
+.win-btn svg{width:10px;height:10px;flex-shrink:0;}
+
+/* ---- load bar: ledger-style query strip ---- */
+.loadbar{display:flex;align-items:center;gap:10px;padding:10px 16px;flex-shrink:0;flex-wrap:wrap;border-bottom:1px solid var(--border-soft);background:var(--panel-2);}
+.lb-field{display:flex;align-items:center;background:var(--panel);border:1px solid var(--border);}
+.lb-field .brk{font-family:Consolas,monospace;font-size:11px;color:var(--accent-2);padding:0 8px;letter-spacing:.5px;}
+.lb-field input[type=text]{background:transparent;border:none;color:var(--text);font-family:Consolas,monospace;font-size:12px;height:32px;outline:none;padding-right:10px;}
+.lb-field:focus-within{border-color:var(--accent-2);}
+#charName{width:160px;}
+.lb-field.folder{flex:1;min-width:160px;}
+.lb-field.folder input{width:100%;}
+.action-btn{background:var(--panel);border:1px solid var(--border);color:var(--text-dim);padding:0 14px;height:32px;font-size:11.5px;font-weight:700;letter-spacing:.3px;cursor:pointer;clip-path:polygon(6px 0,100% 0,100% 100%,0 100%,0 6px);}
+.action-btn:hover{border-color:var(--accent-2);color:var(--accent-1);}
+.action-btn:disabled{opacity:.35;cursor:default;}
+#btnLoad{background:linear-gradient(90deg,var(--accent-1),var(--accent-3));border:none;color:#fff;box-shadow:0 0 12px var(--glow);}
+#btnLoad:hover{filter:brightness(1.08);border-color:transparent;color:#fff;}
+.progress{flex-basis:100%;display:none;gap:10px;align-items:center;}
+.progress.show{display:flex;}
+.pbar{flex:1;height:6px;background:var(--panel);border:1px solid var(--border);border-radius:3px;overflow:hidden;}
+.pbar .fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent-1),var(--accent-3));transition:width .2s;}
+.progress .ptext{font-size:10.5px;color:var(--text-faint);font-family:Consolas,monospace;white-space:nowrap;}
+
+/* ---- body split: icon rail + drawer + stage ---- */
+.main{flex:1;display:flex;min-height:0;}
+.side{display:flex;flex-shrink:0;border-right:1px solid var(--border-soft);background:var(--panel);}
+
+.rail{width:70px;flex-shrink:0;background:var(--rail);border-right:1px solid var(--border-soft);display:flex;flex-direction:column;padding:8px 0;overflow-y:auto;}
+.side .tab{display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 4px;cursor:pointer;color:var(--text-faint);position:relative;font-size:9.5px;letter-spacing:.3px;text-align:center;border-bottom:none;}
+.side .tab svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.4;}
+.side .tab:hover{color:var(--text);}
+.side .tab.active{color:var(--accent-1);}
+.side .tab.active::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:2px;background:var(--accent-2);box-shadow:0 0 8px var(--glow);}
+
+.drawer{width:220px;flex-shrink:0;padding:14px;overflow-y:auto;}
+.side .panel{display:none;}
+.side .panel.active{display:block;}
+.side .panel .dtitle{font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--text-faint);font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:7px;}
+.side .panel .dtitle::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--accent-2);box-shadow:0 0 5px var(--glow);}
+.side .panel label{display:block;font-size:10px;color:var(--text-faint);letter-spacing:1px;text-transform:uppercase;margin:12px 0 5px;}
+.side .panel label:first-of-type{margin-top:0;}
+.side .panel input[type=color]{width:100%;height:30px;border:1px solid var(--border);border-radius:0;background:var(--panel-2);cursor:pointer;}
+.side .panel input[type=range]{width:100%;accent-color:var(--accent-1);}
+.side .panel input[type=text],.side .panel textarea{width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:7px 9px;font-size:12px;outline:none;font-family:Consolas,monospace;}
+.side .panel input[type=text]:focus,.side .panel textarea:focus{border-color:var(--accent-2);}
+.side .panel .row{margin-bottom:8px;font-size:12px;display:flex;align-items:center;gap:8px;}
+.side .panel .row .k{color:var(--text-dim);}
+.side .panel .row input[type=color]{width:44px;height:22px;flex-shrink:0;}
+.monitor{font-size:11px;color:var(--text-faint);line-height:1.6;font-family:Consolas,monospace;white-space:pre-wrap;overflow-y:auto;}
+
+.stage-wrap{flex:1;display:flex;flex-direction:column;min-width:0;padding:14px 16px 0;gap:10px;min-height:0;}
+.stage{flex:1;position:relative;border:1px solid var(--border-soft);background:var(--panel-2);min-height:0;overflow:hidden;}
+.stage .corner{position:absolute;width:12px;height:12px;border-color:var(--accent-2);z-index:2;pointer-events:none;}
+.stage .corner.tl{top:6px;left:6px;border-top:1px solid;border-left:1px solid;}
+.stage .corner.tr{top:6px;right:6px;border-top:1px solid;border-right:1px solid;}
+.stage .corner.bl{bottom:6px;left:6px;border-bottom:1px solid;border-left:1px solid;}
+.stage .corner.br{bottom:6px;right:6px;border-bottom:1px solid;border-right:1px solid;}
+.preview-wrap{position:absolute;inset:0;}
+#previewBox{position:absolute;margin:auto;inset:0;aspect-ratio:16/9;max-width:100%;max-height:100%;}
+#hostHint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text-faint);font-size:12px;letter-spacing:1px;text-align:center;pointer-events:none;font-family:Consolas,monospace;}
+
+.slots{flex-shrink:0;display:flex;align-items:center;gap:6px;padding:6px 0 8px;flex-wrap:wrap;}
+.slots label{font-size:10px;color:var(--text-faint);letter-spacing:1.5px;text-transform:uppercase;font-weight:700;margin-right:4px;}
+.slot-pill{display:flex;align-items:center;gap:5px;background:var(--panel);border:1px solid var(--border);padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;color:var(--text-dim);user-select:none;clip-path:polygon(6px 0,100% 0,100% 100%,0 100%,0 6px);}
+.slot-pill.on{border-color:var(--accent-2);color:var(--accent-1);background:var(--sel-bg);}
+.slot-pill.off{opacity:.4;}
+.bg-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.bg-pick{background:var(--panel);border:1px solid var(--border);color:var(--text-dim);padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;text-align:center;user-select:none;}
+.bg-pick.on{border-color:var(--accent-2);color:var(--accent-1);background:var(--sel-bg);}
+.emote-btn{background:var(--panel);border:1px solid var(--border);color:var(--text-dim);padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;text-align:center;user-select:none;}
+.emote-btn:hover{border-color:var(--accent-2);color:var(--accent-1);}
+.emote-btn:active{background:var(--sel-bg);}
+
+/* ---- status bar ---- */
+.statusbar{flex-shrink:0;padding:7px 16px;font-size:11px;color:var(--text-faint);border-top:1px solid var(--border-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Consolas,monospace;background:var(--panel-2);}
+
+/* ---- modal ---- */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:20;}
+.modal.show{display:flex;}
+.modal .box{width:440px;max-width:92vw;background:var(--panel);border:1px solid var(--border);padding:20px;position:relative;}
+.modal .box::before,.modal .box::after{content:'';position:absolute;width:10px;height:10px;border-color:var(--accent-2);}
+.modal .box::before{top:6px;left:6px;border-top:1px solid;border-left:1px solid;}
+.modal .box::after{bottom:6px;right:6px;border-bottom:1px solid;border-right:1px solid;}
+.modal h3{font-size:14px;color:var(--accent-1);margin-bottom:12px;letter-spacing:.5px;}
+.modal p{font-size:12px;color:var(--text-dim);line-height:1.6;margin-bottom:12px;}
+.modal .mtop{display:flex;justify-content:flex-end;margin-bottom:4px;}
+.modal .mtop button{background:transparent;border:none;color:var(--text-faint);font-size:16px;cursor:pointer;}
+.modal .mtop button:hover{color:var(--accent-1);}
+.modal textarea{width:100%;height:120px;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:8px;font-size:12px;resize:vertical;font-family:Consolas,monospace;}
+</style>
+</head>
+<body>
+
+<div class="titlebar">
+  <div class="brand">
+    <div class="brand-mark"></div>
+    <div class="brand-text">FLASHBOX</div>
+    <div class="menu">
+      <button id="menuLoad">Load Character</button>
+      <button id="menuSave">Save</button>
+      <button id="menuOpen">Open</button>
+      <button id="menuAbout">About</button>
+    </div>
+  </div>
+  <div class="win-controls">
+    <button class="win-btn" id="bMin"><svg viewBox="0 0 11 11"><line x1="0" y1="5.5" x2="11" y2="5.5" stroke="currentColor" stroke-width="1.1"/></svg></button>
+    <button class="win-btn" id="bMax"><svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
+    <button class="win-btn close" id="bClose"><svg viewBox="0 0 11 11"><line x1="0" y1="0" x2="11" y2="11" stroke="currentColor" stroke-width="1.1"/><line x1="11" y1="0" x2="0" y2="11" stroke="currentColor" stroke-width="1.1"/></svg></button>
+  </div>
+</div>
+
+<div class="loadbar">
+  <div class="lb-field"><span class="brk">CHR</span><input type="text" id="charName" placeholder="Character name"></div>
+  <div class="lb-field folder"><span class="brk">DIR</span><input type="text" id="folder" placeholder="Output folder for SWFs"></div>
+  <button class="action-btn" id="btnBrowse">Browse</button>
+  <button class="action-btn" id="btnLoad">Load</button>
+  <div class="progress" id="progress">
+    <div class="pbar"><div class="fill" id="pfill"></div></div>
+    <div class="ptext" id="ptext"></div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="side">
+    <div class="rail">
+      <div class="tab active" data-t="monitor"><svg viewBox="0 0 20 20"><path d="M3 15V9M9 15V4M15 15v-7"/></svg>Monitor</div>
+      <div class="tab" data-t="backgrounds"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="1"/><circle cx="7" cy="8" r="1.4"/><path d="M4 15l4.5-4.5L11 13l3-3 2 2"/></svg>BG</div>
+      <div class="tab" data-t="emotes"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><circle cx="7.5" cy="8.5" r="0.8" fill="currentColor" stroke="none"/><circle cx="12.5" cy="8.5" r="0.8" fill="currentColor" stroke="none"/><path d="M7 12.5c1 1.2 5 1.2 6 0"/></svg>Emotes</div>
+      <div class="tab" data-t="names"><svg viewBox="0 0 20 20"><path d="M11 3h6v6l-9 9-6-6 9-9z"/><circle cx="14" cy="6" r="1"/></svg>Names</div>
+      <div class="tab" data-t="colors"><svg viewBox="0 0 20 20"><path d="M10 3a7 7 0 1 0 0 14c1.2 0 1.6-.7 1.1-1.6-.4-.7 0-1.4.9-1.4H13a4 4 0 0 0 4-4c0-3.9-3.1-7-7-7z"/><circle cx="7" cy="9" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="13" cy="9" r="1" fill="currentColor" stroke="none"/></svg>Colors</div>
+      <div class="tab" data-t="sizes"><svg viewBox="0 0 20 20"><path d="M3 3l6 6M3 3v4M3 3h4"/><path d="M17 17l-6-6M17 17v-4M17 17h-4"/></svg>Sizes</div>
+      <div class="tab" data-t="misc"><svg viewBox="0 0 20 20"><line x1="4" y1="5" x2="16" y2="5"/><line x1="4" y1="10" x2="16" y2="10"/><line x1="4" y1="15" x2="16" y2="15"/><circle cx="7" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="13" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.5" fill="currentColor" stroke="none"/></svg>Misc</div>
+      <div class="tab" data-t="log"><svg viewBox="0 0 20 20"><path d="M4 4h12v12H4z"/><line x1="7" y1="8" x2="13" y2="8"/><line x1="7" y1="11" x2="13" y2="11"/><line x1="7" y1="14" x2="10" y2="14"/></svg>Log</div>
+    </div>
+
+    <div class="drawer">
+      <div class="panel active" id="p-monitor">
+        <div class="dtitle">Monitor</div>
+        <div class="monitor" id="monitor">No character loaded yet.</div>
+      </div>
+      <div class="panel" id="p-backgrounds">
+        <div class="dtitle">Background</div>
+        <label>Scene (from flash folder)</label>
+        <div class="bg-grid" id="bgGrid"></div>
+        <label>Background color</label>
+        <input type="color" id="bgColor" value="#0A0C14">
+      </div>
+      <div class="panel" id="p-emotes">
+        <div class="dtitle">Emotes</div>
+        <label>Click to play</label>
+        <div class="bg-grid" id="emoteGrid"></div>
+        <label>Custom emote label</label>
+        <div class="row"><input type="text" id="emoteCustom" placeholder="e.g. Attack1" style="flex:1;"><button class="action-btn" id="emotePlay">Play</button></div>
+      </div>
+      <div class="panel" id="p-names">
+        <div class="dtitle">Name</div>
+        <div class="row"><input type="checkbox" id="showNames"> <span class="k">Show item names</span></div>
+        <label>Character</label>
+        <input type="text" id="nameText" placeholder="Avatar name">
+        <label>Weapon</label>
+        <input type="text" id="nmWeapon" placeholder="Weapon">
+        <label>Armor</label>
+        <input type="text" id="nmArmor" placeholder="Armor">
+        <label>Helm</label>
+        <input type="text" id="nmHelm" placeholder="Helm">
+        <label>Cape</label>
+        <input type="text" id="nmCape" placeholder="Cape">
+        <label>Pet</label>
+        <input type="text" id="nmPet" placeholder="Pet">
+        <label>Ground</label>
+        <input type="text" id="nmMisc" placeholder="Ground rune">
+        <label>Show</label>
+        <div class="row"><input type="checkbox" id="nameShow" checked> <span class="k">Display over avatar</span></div>
+      </div>
+      <div class="panel" id="p-colors">
+        <div class="dtitle">Dye Colors</div>
+        <div class="row"><span class="k" style="width:60px;">Hair</span><input type="color" id="c1" value="#5c3155"></div>
+        <div class="row"><span class="k" style="width:60px;">Skin</span><input type="color" id="c2" value="#e6c49a"></div>
+        <div class="row"><span class="k" style="width:60px;">Eye</span><input type="color" id="c3" value="#5c3155"></div>
+        <div class="row"><span class="k" style="width:60px;">Trim</span><input type="color" id="c4" value="#f8f0d8"></div>
+        <div class="row"><span class="k" style="width:60px;">Base</span><input type="color" id="c5" value="#f8f0d8"></div>
+        <div class="row"><span class="k" style="width:60px;">Access.</span><input type="color" id="c6" value="#00ffff"></div>
+      </div>
+      <div class="panel" id="p-sizes">
+        <div class="dtitle">Preview Scale</div>
+        <label>Scale</label>
+        <input type="range" id="scale" min="20" max="200" value="100">
+        <div class="row"><span class="k" id="scaleVal">100%</span></div>
+      </div>
+      <div class="panel" id="p-misc">
+        <div class="dtitle">Visibility</div>
+        <div class="row"><input type="checkbox" id="hideHelm"> <span class="k">Hide helm</span></div>
+        <div class="row"><input type="checkbox" id="hideCape"> <span class="k">Hide cape</span></div>
+        <div class="row"><input type="checkbox" id="hidePet"> <span class="k">Hide pet</span></div>
+        <div class="row"><input type="checkbox" id="hideWeapon"> <span class="k">Hide weapon</span></div>
+        <div class="row"><input type="checkbox" id="hideUI"> <span class="k">Hide interface</span></div>
+      </div>
+      <div class="panel" id="p-log">
+        <div class="dtitle">Log</div>
+        <button class="action-btn" id="btnClearSideLog" style="width:100%;margin-bottom:8px;">Clear log</button>
+        <div class="monitor" id="sideLogView" style="height:300px;">(empty)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage-wrap">
+    <div class="stage">
+      <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+      <div class="preview-wrap">
+        <div id="previewBox"></div>
+        <div id="hostHint">Loading Flash renderer&hellip;</div>
+      </div>
+    </div>
+    <div class="slots">
+      <label>Outfit</label>
+      <div class="slot-pill off" id="cosPill">Cosmetics</div>
+    </div>
+  </div>
+</div>
+
+<div class="statusbar" id="status">Ready. Enter a character name, pick a folder, and click Load.</div>
+
+<div class="modal" id="modalAbout">
+  <div class="box">
+    <div class="mtop"><button data-close="modalAbout">&times;</button></div>
+    <h3>FlashBox</h3>
+    <p>FlashBox rebuilt as a combined WinForms + WebView2 app. Loads a character from aq.com, downloads the equipped item SWFs, and previews them with the same real-Flash renderer — now hosted in the same window, so nothing glitches when you drag or click away.</p>
+  </div>
+</div>
+
+<script>
+/* ---- WebView2 IPC via host objects (the web-message channel is unreliable on this machine) ---- */
+function post(method, args) {
+  try {
+    switch (method) {
+      case 'minimize': return __fb.minimize().then(() => null);
+      case 'maximize': return __fb.maximize().then(() => null);
+      case 'close': return __fb.closeWindow().then(() => null);
+      case 'startDrag': return __fb.startDrag().then(() => null);
+      case 'reportRect': return __fb.reportRect(args.x, args.y, args.w, args.h).then(() => null);
+      case 'flashCall': return __fb.flashCall(args.method, JSON.stringify(args.params || [])).then(() => null);
+      case 'flashQuery': return __fb.flashQuery(args.method);
+      case 'background': return __fb.background(args.name).then(() => null);
+      case 'reset': return __fb.reset().then(() => null);
+      case 'gear': return __fb.gear(args.rows).then(() => null);
+      case 'loadItem': return __fb.loadItem(args.ItemType, args.ItemFile, args.WeaponType || '').then(() => null);
+      case '__jsLog': return __fb.jsLog(JSON.stringify(args || {})).then(() => null);
+      case 'loadChar': return __fb.loadChar(args.name).then(s => JSON.parse(s));
+      case 'downloadAll': return __fb.downloadAll(JSON.stringify(args.vars), args.dir).then(s => JSON.parse(s));
+      case 'pickFolder': return __fb.pickFolder();
+      case 'getAppDir': return __fb.getAppDir();
+      case 'getLog': return __fb.getLog();
+      case 'clearLog': return __fb.clearLog().then(() => null);
+      case 'saveFile': return __fb.saveFile(args.data, args.name);
+      case 'openFile': return __fb.openFile();
+      default: return Promise.resolve(null);
+    }
+  } catch (err) {
+    return Promise.resolve({ __postError: String(err && err.message || err) });
+  }
+}
+const __fb = window.chrome.webview.hostObjects.fbhost;
+post('__jsLog', { page: 'flashbox-ui v6 drawer host-objects' });
+function on(ev, fn) { (__handlers[ev] = __handlers[ev] || []).push(fn); }
+const __handlers = {};
+
+let progressHandler = null;
+on('progress', p => { if (progressHandler) progressHandler(p); });
+
+/* ---- temp debug: surface JS errors to the host ---- */
+function __dbg(msg) {
+  try { __fb.jsLog('ERR ' + msg); } catch { }
+}
+window.addEventListener('error', e => __dbg('ERR ' + e.message + ' @ ' + (e.filename || '') + ':' + e.lineno));
+window.addEventListener('unhandledrejection', e => __dbg('REJ ' + String((e.reason && e.reason.message) || e.reason)));
+
+const SLOT_TYPES = ['Hair', 'Helm', 'Cape', 'Armor', 'Weapon', 'Pet', 'Misc'];
+
+document.getElementById('bMin').onclick = () => post('minimize');
+document.getElementById('bMax').onclick = () => post('maximize');
+document.getElementById('bClose').onclick = () => post('close');
+
+const titlebar = document.querySelector('.titlebar');
+titlebar.addEventListener('mousedown', e => {
+  if (e.button !== 0 || e.target.closest('button')) return;
+  post('startDrag');
+});
+
+const statusEl = document.getElementById('status');
+const monitorEl = document.getElementById('monitor');
+function setStatus(m) { statusEl.textContent = m; }
+
+/* ---- project state ---- */
+const project = {
+  name: '',
+  background: '#0A0C14',
+  scale: 100,
+  nameText: '',
+  nameShow: true,
+  showNames: false,
+  nameFields: { weapon: '', armor: '', helm: '', cape: '', pet: '', misc: '' },
+  colors: { c1: '#5c3155', c2: '#e6c49a', c3: '#5c3155', c4: '#f8f0d8', c5: '#f8f0d8', c6: '#00ffff' },
+  slots: {}, // type -> { file, path, enabled }
+  cosmetics: {}, // cosmetic (Cust*) outfit, same shape
+  cosmeticsOn: false,
+  gear: {}, // type -> display name (equipped)
+  gearCos: {}, // type -> display name (cosmetic)
+  vars: null // CharPage FlashVars (strWeaponType / strCustWeaponType live here)
+};
+
+/* Slots the Cosmetics toggle swaps (CharPage parity): Helm/Cape/Armor/
+   Weapon come from the cosmetic set when on, everything else always
+   from the base set. */
+const COSMETIC_TYPES = ['Helm', 'Cape', 'Armor', 'Weapon'];
+function activeEntry(t) {
+  if (project.cosmeticsOn && COSMETIC_TYPES.indexOf(t) >= 0 && project.cosmetics[t]) return project.cosmetics[t];
+  return project.slots[t];
+}
+
+/* ---- gear list (CharPage-style icons + names, drawn by the native HUD
+   overlay - HTML cannot float above the Flash window) ---- */
+const GEAR_ORDER = ['Weapon', 'Armor', 'Helm', 'Cape', 'Pet', 'Misc'];
+function renderGear() {
+  const rows = [];
+  let any = false;
+  GEAR_ORDER.forEach(t => {
+    const names = (project.cosmeticsOn && COSMETIC_TYPES.indexOf(t) >= 0) ? project.gearCos : project.gear;
+    const nm = (names && names[t]) || 'None';
+    if (nm !== 'None') any = true;
+    const s = activeEntry(t);
+    rows.push({ icon: t.toLowerCase(), name: nm, dim: !(s && s.path) });
+  });
+  post('gear', { rows: JSON.stringify(any ? rows : []) });
+}
+
+/* ---- Flash IPC helpers ---- */
+function flashCall(method, params) {
+  post('flashCall', { method, params: params || [] });
+}
+let __hostRunning = false;
+let __hostDirty = false;
+let __hostDone = Promise.resolve();
+let __everLoaded = false; // true once any items were sent (player is dirty)
+let __loading = false; // true while loadCharacter runs
+function sendHost() {
+  __hostDirty = true;
+  if (__hostRunning) return __hostDone;
+  __hostRunning = true;
+  __hostDone = (async () => {
+    while (__hostDirty) {
+      __hostDirty = false;
+      try { await runSendHost(); } catch (e) { }
+    }
+    __hostRunning = false;
+  })();
+  return __hostDone;
+}
+async function runSendHost() {
+  const some = SLOT_TYPES.some(t => { const s = activeEntry(t); return s && s.enabled && s.path; });
+  // A fresh player has nothing attached: resetting it only blinks the
+  // preview (the startup "reload"). Reset solely to clear previous items.
+  if (__everLoaded || some) {
+    await post('reset');
+    await new Promise(r => setTimeout(r, 400));
+  // The player unpacks embedded content asynchronously. Wait until its
+  // isReady flag is up before sending items; otherwise load* calls can
+  // fail silently (black avatar). Players without isReady fall back to
+  // the legacy fixed wait.
+  let poll = false;
+  try {
+    const v = await post('flashQuery', { method: 'isReady' });
+    if (v === '0' || v === '1') poll = true;
+  } catch (e) {}
+  if (poll) {
+    setStatus('Waiting for Flash renderer...');
+    for (let i = 0; i < 60; i++) {
+      let v = null;
+      try { v = await post('flashQuery', { method: 'isReady' }); } catch (e) {}
+      if (v === '1') break;
+      await new Promise(r => setTimeout(r, 300));
+    }
+    let st = null;
+    try { st = await post('flashQuery', { method: 'isReady' }); } catch (e) {}
+    if (st !== '1') { try { st = await post('flashQuery', { method: 'getStatus' }); } catch (e) {} }
+    await post('__jsLog', { step: 'player-ready', state: st });
+    }
+  }
+  for (const t of SLOT_TYPES) {
+    const s = activeEntry(t);
+    if (s && s.enabled && s.path) {
+      const msg = { ItemType: t, ItemFile: s.path };
+      // CharPage parity: the player splits Dagger-typed weapons across both
+      // hands (direct-attach). Tell it which set is active (cos or base).
+      if (t === 'Weapon' && project.vars) {
+        const isCos = project.cosmeticsOn && project.cosmetics['Weapon'] && s === project.cosmetics['Weapon'];
+        msg.WeaponType = isCos ? (project.vars['strCustWeaponType'] || '') : (project.vars['strWeaponType'] || '');
+      }
+      await post('loadItem', msg);
+    }
+  }
+  if (some) __everLoaded = true;
+  applyExtraState();
+}
+/* a reset rebuilds the Flash control from scratch, so re-apply every piece
+   of player state the UI can change (mirrors the control handlers below).
+   The player is char6.swf with native loadMisc, so every call is
+   understood. */
+function applyExtraState() {
+  sendBackground();
+  flashCall('loadResize', [String(project.scale / 100)]);
+  Object.keys(colorMethods).forEach(id => {
+    const c = project.colors[id] || '#ffffff';
+    flashCall(colorMethods[id], [String(parseInt(c.slice(1), 16))]);
+  });
+  flashCall('changeUserName', [project.nameShow && project.nameText ? project.nameText : '']);
+  Object.keys(nameMethods).forEach(k => {
+    if (project.nameFields[k]) flashCall(nameMethods[k], [project.nameFields[k]]);
+  });
+  updateUIVisibility();
+  if (project.hideHelm) flashCall('hideHelm', ['True']);
+  if (project.hideCape) flashCall('hideCape', ['True']);
+  if (project.hidePet) flashCall('hidePet', ['True']);
+  if (project.hideWeapon) flashCall('unarmed', ['True']);
+}
+/* closeUii compares against capital "True" (param == "True" shows the
+   labels), so it needs the capitalized form - lowercase "true" hides.
+   One function drives it from both the Names and Misc checkboxes. */
+function updateUIVisibility() {
+  flashCall('closeUii', [project.showNames && !project.hideUI ? 'True' : 'False']);
+}
+function sendBackground() {
+  post('background', { name: project.background });
+  document.getElementById('previewBox').style.background =
+    project.background[0] === '#' ? project.background : '#0A0C14';
+  updateBgPicks();
+}
+
+/* ---- background scenes ---- */
+const BG_SCENES = ['Chaos', 'ClubHouse', 'Frostvale', 'Hill', 'Mystcroft', 'Shadowscythe', 'Yulgar',
+  'cp-doomwood', 'cp-ledgermayne', 'cp-lightguard', 'cp-northernlights', 'cp-sandsea', 'cp-shadowfall', 'cp-skyguard', 'cp-void', 'cp-yulgar', 'cp-mogloween',
+  'CP-Frostvale', 'CP-Love', 'cp-battleon2', 'cp-chaos', 'cp-river', 'cp-whitemap', 'CP-Underworld2r1',
+  'cp-bg18', 'cp-bg19', 'cp-bg20', 'cp-bg21', 'cp-bg22', 'cp-bg23', 'cp-bg24', 'cp-bg25', 'cp-bg26', 'cp-bg27', 'cp-bg28', 'cp-bg29', 'cp-bg30',
+  'cp-bg31', 'cp-bg32', 'cp-bg33', 'cp-bg34', 'cp-bg35'];
+function updateBgPicks() {
+  document.querySelectorAll('.bg-pick').forEach(b => b.classList.toggle('on', project.background === b.textContent));
+}
+(function buildBgPicks() {
+  const grid = document.getElementById('bgGrid');
+  BG_SCENES.forEach(n => {
+    const b = document.createElement('div');
+    b.className = 'bg-pick';
+    b.textContent = n;
+    b.onclick = () => { project.background = n; sendBackground(); };
+    grid.appendChild(b);
+  });
+  updateBgPicks();
+})();
+
+/* ---- preview rect reporting (the 16:9 letterboxed box) ---- */
+const wrap = document.querySelector('#previewBox');
+function reportRect() {
+  const r = wrap.getBoundingClientRect();
+  post('reportRect', { x: r.left, y: r.top, w: r.width, h: r.height });
+}
+new ResizeObserver(reportRect).observe(wrap);
+window.addEventListener('resize', reportRect);
+on('hostReady', () => {
+  document.getElementById('hostHint').textContent = 'Flash renderer ready';
+  sendBackground();
+  sendHost();
+  reportRect();
+});
+setTimeout(() => {
+  document.getElementById('hostHint').textContent = 'Flash renderer ready';
+  sendBackground();
+  // Boot fallback only: if a real load already ran or is running, sending
+  // again just rebuilds the player a second time (the startup double/triple
+  // refresh). The hostReady handler path is dead (no message dispatcher).
+  if (!__everLoaded && !__loading) sendHost();
+  reportRect();
+}, 2500);
+
+/* ---- tabs ---- */
+function activateTab(name) {
+  document.querySelectorAll('.side .tab').forEach(t => t.classList.toggle('active', t.dataset.t === name));
+  document.querySelectorAll('.side .panel').forEach(p => p.classList.toggle('active', p.id === 'p-' + name));
+  if (name === 'log') startSideLog(); else stopSideLog();
+}
+document.querySelectorAll('.side .tab').forEach(tab => {
+  tab.onclick = () => activateTab(tab.dataset.t);
+});
+
+/* ---- live side log ---- */
+let sideLogTimer = null;
+async function refreshSideLog() {
+  const el = document.getElementById('sideLogView');
+  if (!el) return;
+  const t = await post('getLog');
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+  el.textContent = t || '(empty log)';
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+function startSideLog() { refreshSideLog(); if (!sideLogTimer) sideLogTimer = setInterval(refreshSideLog, 1000); }
+function stopSideLog() { if (sideLogTimer) { clearInterval(sideLogTimer); sideLogTimer = null; } }
+document.getElementById('btnClearSideLog').onclick = async () => { await post('clearLog'); refreshSideLog(); };
+
+document.querySelectorAll('.modal [data-close]').forEach(b => {
+  b.onclick = () => b.closest('.modal').classList.remove('show');
+});
+document.getElementById('menuAbout').onclick = () => document.getElementById('modalAbout').classList.add('show');
+
+/* ---- folder + load ---- */
+document.getElementById('btnBrowse').onclick = async () => {
+  const f = await post('pickFolder');
+  if (f) document.getElementById('folder').value = f;
+};
+document.getElementById('menuLoad').onclick = loadCharacter;
+document.getElementById('btnLoad').onclick = loadCharacter;
+document.getElementById('charName').addEventListener('keydown', e => { if (e.key === 'Enter') loadCharacter(); });
+
+async function loadCharacter() {
+  const name = document.getElementById('charName').value.trim();
+  let dir = document.getElementById('folder').value.trim();
+  if (!name) { setStatus('Enter a character name.'); return; }
+  await post('__jsLog', { step: 'start', name });
+  if (!dir) { dir = await post('getAppDir'); dir = dir ? dir + '\\swf' : dir; document.getElementById('folder').value = dir || ''; }
+  await post('__jsLog', { step: 'got-appdir', dir });
+  setBusy(true);
+  __loading = true;
+  await post('__jsLog', { step: 'busy' });
+  setStatus('Fetching character page for ' + name + '...');
+  try {
+    const res = await post('loadChar', { name });
+    await post('__jsLog', { step: 'loadchar-returned', ok: !!(res && res.ok), err: res && res.error });
+    if (!res || res.__postError || !res.ok) { setStatus('Failed: ' + ((res && (res.error || res.__postError)) || 'unknown error')); __loading = false; setBusy(false); return; }
+    const vars = res.vars;
+    project.vars = vars;
+    project.name = name;
+    document.getElementById('charName').value = name;
+    // Fill the Names panel from the character data (original FlashBox parity).
+    project.nameText = name;
+    document.getElementById('nameText').value = name;
+    project.nameFields = {
+      weapon: vars['strWeaponName'] || '',
+      armor: vars['strArmorName'] || vars['strClassName'] || '',
+      helm: vars['strHelmName'] || '',
+      cape: vars['strCapeName'] || '',
+      pet: vars['strPetName'] || '',
+      misc: vars['strMiscName'] || ''
+    };
+    Object.keys(nameMethods).forEach(k => { document.getElementById(nameInputs[k]).value = project.nameFields[k]; });
+    project.gear = {
+      Weapon: vars['strWeaponName'] || '',
+      Armor: vars['strArmorName'] || vars['strClassName'] || '',
+      Helm: vars['strHelmName'] || '',
+      Cape: vars['strCapeName'] || '',
+      Pet: vars['strPetName'] || '',
+      Misc: vars['strMiscName'] || ''
+    };
+    project.gearCos = {
+      Weapon: vars['strCustWeaponName'] || '',
+      Armor: vars['strCustArmorName'] || '',
+      Helm: vars['strCustHelmName'] || '',
+      Cape: vars['strCustCapeName'] || ''
+    };
+    renderGear();
+    monitorEl.textContent = formatVars(vars);
+    setStatus('Downloading item SWFs to ' + dir + '...');
+    const dl = await post('downloadAll', { vars, dir });
+    if (!dl || !dl.items) { setStatus('Failed: ' + ((dl && dl.__postError) || 'no download reply')); __loading = false; setBusy(false); return; }
+    project.slots = {};
+    project.cosmetics = {};
+    project.cosmeticsOn = false;
+    const pbar = document.getElementById('pfill');
+    const ptext = document.getElementById('ptext');
+    const prog = document.getElementById('progress');
+    prog.classList.add('show');
+    progressHandler = p => {
+      const cos = p.cosmetic ? ' (cos)' : '';
+      pbar.style.width = Math.round(100 * p.index / p.total) + '%';
+      ptext.textContent = p.index + '/' + p.total + ' ' + p.type + cos + (p.ok ? ' done' : ' FAILED');
+      setStatus((p.ok ? 'Downloaded ' : 'Failed ') + p.type + cos + ' ' + p.file);
+    };
+    dl.items.forEach(it => {
+      if (!it.ok) return;
+      const entry = { file: it.file, path: it.path, enabled: true };
+      if (it.cosmetic) project.cosmetics[it.type] = entry;
+      else project.slots[it.type] = entry;
+    });
+    pbar.style.width = '100%';
+    ptext.textContent = dl.items.length + '/' + dl.items.length + ' complete';
+    setStatus('Loaded ' + name + ': ' + (Object.keys(project.slots).length + Object.keys(project.cosmetics).length) + '/' + dl.items.length + ' items downloaded.');
+    setTimeout(() => prog.classList.remove('show'), 1500);
+    monitorEl.textContent = formatVars(vars) + '\n\nDownloaded to:\n' + dl.dir + '\n'
+      + dl.items.map(it => (it.ok ? '[ok] ' : '[FAIL] ') + (it.cosmetic ? '(cos) ' : '') + it.type + '  ' + it.file + (it.ok ? '\n         -> ' + it.path : '')).join('\n');
+    updatePills();
+    await sendHost();
+    refreshSideLog();
+    reportRect();
+  } catch (err) {
+    await post('__jsLog', { step: 'catch', err: String(err && err.message || err) });
+    setStatus('Error: ' + (err && err.message || err));
+  }
+  __loading = false;
+  setBusy(false);
+}
+
+function formatVars(vars) {
+  const lines = [];
+  ['strGender','strHairName','strHelmName','strCapeName','strClassName','strArmorName','strWeaponName','strPetName','strMiscName','strHairFile','strHelmFile','strCapeFile','strClassFile','strWeaponFile','strPetFile','strMiscFile','strCustHelmName','strCustCapeName','strCustArmorName','strCustWeaponName','strCustHelmFile','strCustCapeFile','strCustArmorFile','strCustWeaponFile'].forEach(k => {
+    if (vars[k]) lines.push(k + ' = ' + vars[k]);
+  });
+  return lines.join('\n');
+}
+
+function setBusy(b) {
+  document.getElementById('btnLoad').disabled = b;
+  document.getElementById('btnBrowse').disabled = b;
+}
+
+/* ---- slot pills ---- */
+function updatePills() {
+  const all = SLOT_TYPES.every(t => { const s = activeEntry(t); return !s || s.enabled; });
+  document.querySelectorAll('.slot-pill').forEach(p => {
+    if (p.id === 'cosPill') {
+      const has = Object.keys(project.cosmetics).length > 0;
+      p.classList.toggle('on', project.cosmeticsOn && has);
+      p.classList.toggle('off', !project.cosmeticsOn || !has);
+      return;
+    }
+    if (p.dataset.slot === 'all') { p.classList.toggle('on', all); p.classList.toggle('off', !all); return; }
+    const s = activeEntry(p.dataset.slot);
+    p.classList.toggle('on', !!(s && s.enabled));
+    p.classList.toggle('off', !(s && s.enabled));
+  });
+}
+
+document.getElementById('cosPill').onclick = () => {
+  if (Object.keys(project.cosmetics).length === 0) { setStatus('No cosmetic items on this character.'); return; }
+  project.cosmeticsOn = !project.cosmeticsOn;
+  setStatus(project.cosmeticsOn ? 'Cosmetic outfit on.' : 'Equipped outfit on.');
+  updatePills();
+  renderGear();
+  sendHost();
+};
+
+document.querySelectorAll('.slot-pill').forEach(p => {
+  if (p.id === 'cosPill') return;
+  p.onclick = () => {
+    const slot = p.dataset.slot;
+    if (slot === 'all') {
+      const anyOn = SLOT_TYPES.some(t => { const s = activeEntry(t); return s && s.enabled; });
+      const target = !anyOn;
+      SLOT_TYPES.forEach(t => { const s = activeEntry(t); if (s) s.enabled = target; });
+    } else {
+      const s = activeEntry(slot);
+      if (s) s.enabled = !s.enabled;
+    }
+    updatePills();
+    sendHost();
+  };
+});
+
+/* ---- emotes (labels straight from the player's timeline) ---- */
+const EMOTES = ['Idle', 'Dance', 'Dance2', 'Laugh', 'Point', 'Wave', 'Bow', 'Cheer', 'Salute', 'Salute2', 'Cry', 'Cry2', 'Sleep', 'Rest', 'Kneel', 'Punt', 'Unsheath', 'Thrash', 'Facepalm', 'Airguitar', 'Backflip', 'Headbang', 'Stepdance', 'Samba', 'Spar', 'Dazed', 'Dodge', 'Powerup', 'Jumpcheer', 'Psychic1', 'Psychic2', 'Throw', 'FireBreath', 'Swordplay', 'Feign', 'Dead', 'Stern', 'Jump', 'Attack1', 'Attack2'];
+(function buildEmotes() {
+  const grid = document.getElementById('emoteGrid');
+  EMOTES.forEach(n => {
+    const b = document.createElement('div');
+    b.className = 'emote-btn';
+    b.textContent = n;
+    b.onclick = () => flashCall('loadEmote', [n]);
+    grid.appendChild(b);
+  });
+  document.getElementById('emotePlay').onclick = () => {
+    const v = document.getElementById('emoteCustom').value.trim();
+    if (v) flashCall('loadEmote', [v]);
+  };
+  document.getElementById('emoteCustom').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('emotePlay').click();
+  });
+})();
+
+/* ---- tool panels (FlashCall parity with FlashBox) ---- */
+const bgColor = document.getElementById('bgColor');
+bgColor.value = project.background;
+bgColor.oninput = () => { project.background = bgColor.value; sendBackground(); };
+
+const scaleInput = document.getElementById('scale');
+scaleInput.value = project.scale;
+scaleInput.oninput = () => {
+  project.scale = +scaleInput.value;
+  document.getElementById('scaleVal').textContent = project.scale + '%';
+  flashCall('loadResize', [String(project.scale / 100)]);
+};
+
+const nameText = document.getElementById('nameText');
+nameText.oninput = () => {
+  project.nameText = nameText.value;
+  if (document.getElementById('nameShow').checked) flashCall('changeUserName', [nameText.value]);
+};
+document.getElementById('nameShow').onchange = e => {
+  project.nameShow = e.target.checked;
+  if (e.target.checked) flashCall('changeUserName', [project.nameText]);
+  else flashCall('changeUserName', ['']);
+};
+document.getElementById('showNames').onchange = e => {
+  project.showNames = e.target.checked;
+  updateUIVisibility();
+};
+
+const nameMethods = { weapon: 'changeWeaponName', armor: 'changeArmorName', helm: 'changeHelmName', cape: 'changeCapeName', pet: 'changePetName', misc: 'changeMiscName' };
+const nameInputs = { weapon: 'nmWeapon', armor: 'nmArmor', helm: 'nmHelm', cape: 'nmCape', pet: 'nmPet', misc: 'nmMisc' };
+Object.keys(nameMethods).forEach(k => {
+  const el = document.getElementById(nameInputs[k]);
+  el.value = project.nameFields[k] || '';
+  el.oninput = () => {
+    project.nameFields[k] = el.value;
+    flashCall(nameMethods[k], [el.value]);
+  };
+});
+
+const colorMethods = { c1: 'Hair', c2: 'Skin', c3: 'Eye', c4: 'Trim', c5: 'Base', c6: 'Accessory' };
+Object.keys(colorMethods).forEach(id => {
+  const el = document.getElementById(id);
+  el.value = project.colors[id];
+  el.oninput = () => {
+    project.colors[id] = el.value;
+    const intVal = parseInt(el.value.slice(1), 16);
+    flashCall(colorMethods[id], [String(intVal)]);
+  };
+});
+
+function miscFlashCall(checkbox, method, key) {
+  checkbox.onchange = () => {
+    project[key] = checkbox.checked;
+    flashCall(method, [String(checkbox.checked)]);
+  };
+}
+miscFlashCall(document.getElementById('hideHelm'), 'hideHelm', 'hideHelm');
+miscFlashCall(document.getElementById('hideCape'), 'hideCape', 'hideCape');
+miscFlashCall(document.getElementById('hidePet'), 'hidePet', 'hidePet');
+miscFlashCall(document.getElementById('hideWeapon'), 'unarmed', 'hideWeapon');
+document.getElementById('hideUI').onchange = e => {
+  project.hideUI = e.target.checked;
+  updateUIVisibility();
+};
+
+/* ---- save / open project ---- */
+document.getElementById('menuSave').onclick = async () => {
+  const data = JSON.stringify(project, null, 2);
+  const p = await post('saveFile', { data, name: (project.name ? project.name + '.fbp' : 'flashbox.fbp') });
+  setStatus(p ? 'Project saved: ' + p : 'Save cancelled');
+};
+document.getElementById('menuOpen').onclick = async () => {
+  const raw = await post('openFile');
+  if (!raw) { setStatus('Open cancelled.'); return; }
+  try {
+    const info = JSON.parse(raw);
+    const saved = JSON.parse(info.data);
+    Object.keys(project).forEach(k => { if (saved[k] !== undefined) project[k] = saved[k]; });
+    document.getElementById('charName').value = project.name || '';
+    document.getElementById('folder').value = info.path ? info.path.split(/[\\/]/).slice(0, -1).join('\\') : '';
+    bgColor.value = project.background[0] === '#' ? project.background : '#0A0C14';
+    updateBgPicks();
+    scaleInput.value = project.scale;
+    document.getElementById('scaleVal').textContent = project.scale + '%';
+    nameText.value = project.nameText;
+    document.getElementById('nameShow').checked = !!project.nameShow;
+    document.getElementById('showNames').checked = !!project.showNames;
+    document.getElementById('hideUI').checked = !!project.hideUI;
+    Object.keys(nameMethods).forEach(k => { document.getElementById(nameInputs[k]).value = (project.nameFields && project.nameFields[k]) || ''; });
+    renderGear();
+    Object.keys(colorMethods).forEach(id => {
+      const v = project.colors[id] || '#ffffff';
+      document.getElementById(id).value = v;
+    });
+    updatePills();
+    sendBackground();
+    sendHost();
+    setStatus('Project opened: ' + info.path);
+  } catch (err) {
+    setStatus('Failed to open project: ' + err.message);
+  }
+};
+
+reportRect();
+post('getAppDir').then(d => { if (d && !document.getElementById('folder').value) document.getElementById('folder').value = d + '\\swf'; });
+setStatus('Ready. Enter a character name and click Load.');
+</script>
+</body>
+</html>
