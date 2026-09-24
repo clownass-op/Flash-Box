@@ -28,7 +28,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 ::-webkit-scrollbar-thumb:hover{background:var(--accent-2);}
 
 /* ---- titlebar ---- */
-.titlebar{height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#0A0E1A,#060912);padding:0 6px 0 12px;border-bottom:1px solid var(--border-soft);-webkit-app-region:drag;position:relative;}
+.titlebar{height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#0A0E1A,#060912);padding:0 6px 0 12px;border-bottom:1px solid var(--border-soft);-webkit-app-region:drag;position:relative;border-radius:10px 10px 0 0;}
 .titlebar::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;background:linear-gradient(90deg,transparent,var(--accent-2) 20%,var(--accent-1) 50%,var(--accent-2) 80%,transparent);opacity:.55;}
 .brand{display:flex;align-items:center;gap:8px;}
 .brand-mark{width:20px;height:20px;border-radius:5px;flex-shrink:0;background:linear-gradient(135deg,var(--accent-1),var(--accent-3));position:relative;box-shadow:0 0 12px var(--glow);}
@@ -38,28 +38,32 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .menu button{background:transparent;border:1px solid transparent;color:var(--text-dim);padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;}
 .menu button:hover{border-color:var(--border);color:var(--accent-1);}
 .win-controls{display:flex;-webkit-app-region:no-drag;}
-.win-btn{width:38px;height:28px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;cursor:pointer;color:var(--text-faint);}
+.win-btn{width:40px;height:28px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;cursor:pointer;color:var(--text-faint);border-radius:6px;margin:6px 4px 6px 0;}
+#controls .win-btn:last-child{margin-right:6px;}
+#bMax .ic-restore{display:none;}
+body.maximized #bMax .ic-max{display:none;}
+body.maximized #bMax .ic-restore{display:inline;}
 .win-btn:hover{background:rgba(255,255,255,.08);color:var(--text);}
 .win-btn.close{color:var(--text-faint);}
 .win-btn.close:hover{background:var(--accent-2);color:#fff;}
 .win-btn svg{width:10px;height:10px;flex-shrink:0;}
 
-/* ---- load bar: ledger-style query strip ---- */
-.loadbar{display:flex;align-items:center;gap:10px;padding:10px 16px;flex-shrink:0;flex-wrap:wrap;border-bottom:1px solid var(--border-soft);background:var(--panel-2);}
-.lb-field{display:flex;align-items:center;background:var(--panel);border:1px solid var(--border);}
+/* ---- folder strip (lives at the top of the drawer now) ---- */
+.folderset{padding:10px 12px 4px;flex-shrink:0;}
+.lb-field{display:flex;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:7px;overflow:hidden;}
 .lb-field .brk{font-family:Consolas,monospace;font-size:11px;color:var(--accent-2);padding:0 8px;letter-spacing:.5px;}
 .lb-field input[type=text]{background:transparent;border:none;color:var(--text);font-family:Consolas,monospace;font-size:12px;height:32px;outline:none;padding-right:10px;}
 .lb-field:focus-within{border-color:var(--accent-2);}
 #charName{width:160px;}
 .lb-field.folder{flex:1;min-width:160px;}
 .lb-field.folder input{width:100%;}
-.action-btn{background:var(--panel);border:1px solid var(--border);color:var(--text-dim);padding:0 14px;height:32px;font-size:11.5px;font-weight:700;letter-spacing:.3px;cursor:pointer;clip-path:polygon(6px 0,100% 0,100% 100%,0 100%,0 6px);}
+.action-btn{background:var(--panel);border:1px solid var(--border);color:var(--text-dim);padding:0 14px;height:32px;font-size:11.5px;font-weight:700;letter-spacing:.3px;cursor:pointer;border-radius:7px;}
 .action-btn:hover{border-color:var(--accent-2);color:var(--accent-1);}
 .action-btn:disabled{opacity:.35;cursor:default;}
-#btnLoad{background:linear-gradient(90deg,var(--accent-1),var(--accent-3));border:none;color:#fff;box-shadow:0 0 12px var(--glow);}
-#btnLoad:hover{filter:brightness(1.08);border-color:transparent;color:#fff;}
 .progress{flex-basis:100%;display:none;gap:10px;align-items:center;}
 .progress.show{display:flex;}
+/* loads run silent now (cached files barely take time): never show the bar */
+.progress,.progress.show{display:none !important;}
 .pbar{flex:1;height:6px;background:var(--panel);border:1px solid var(--border);border-radius:3px;overflow:hidden;}
 .pbar .fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent-1),var(--accent-3));transition:width .2s;}
 .progress .ptext{font-size:10.5px;color:var(--text-faint);font-family:Consolas,monospace;white-space:nowrap;}
@@ -82,9 +86,9 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .side .panel .dtitle::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--accent-2);box-shadow:0 0 5px var(--glow);}
 .side .panel label{display:block;font-size:10px;color:var(--text-faint);letter-spacing:1px;text-transform:uppercase;margin:12px 0 5px;}
 .side .panel label:first-of-type{margin-top:0;}
-.side .panel input[type=color]{width:100%;height:30px;border:1px solid var(--border);border-radius:0;background:var(--panel-2);cursor:pointer;}
+.side .panel input[type=color]{width:100%;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--panel-2);cursor:pointer;}
 .side .panel input[type=range]{width:100%;accent-color:var(--accent-1);}
-.side .panel input[type=text],.side .panel textarea{width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:7px 9px;font-size:12px;outline:none;font-family:Consolas,monospace;}
+.side .panel input[type=text],.side .panel textarea{width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:7px 9px;font-size:12px;outline:none;font-family:Consolas,monospace;border-radius:6px;}
 .side .panel input[type=text]:focus,.side .panel textarea:focus{border-color:var(--accent-2);}
 .side .panel .row{margin-bottom:8px;font-size:12px;display:flex;align-items:center;gap:8px;}
 .side .panel .row .k{color:var(--text-dim);}
@@ -92,7 +96,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .monitor{font-size:11px;color:var(--text-faint);line-height:1.6;font-family:Consolas,monospace;white-space:pre-wrap;overflow-y:auto;}
 
 .stage-wrap{flex:1;display:flex;flex-direction:column;min-width:0;padding:14px 16px 0;gap:10px;min-height:0;}
-.stage{flex:1;position:relative;border:1px solid var(--border-soft);background:var(--panel-2);min-height:0;overflow:hidden;}
+.stage{flex:1;position:relative;border:1px solid var(--border-soft);background:var(--panel-2);min-height:0;overflow:hidden;border-radius:10px;}
 .stage .corner{position:absolute;width:12px;height:12px;border-color:var(--accent-2);z-index:2;pointer-events:none;}
 .stage .corner.tl{top:6px;left:6px;border-top:1px solid;border-left:1px solid;}
 .stage .corner.tr{top:6px;right:6px;border-top:1px solid;border-right:1px solid;}
@@ -104,23 +108,24 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 
 .slots{flex-shrink:0;display:flex;align-items:center;gap:6px;padding:6px 0 8px;flex-wrap:wrap;}
 .slots label{font-size:10px;color:var(--text-faint);letter-spacing:1.5px;text-transform:uppercase;font-weight:700;margin-right:4px;}
-.slot-pill{display:flex;align-items:center;gap:5px;background:var(--panel);border:1px solid var(--border);padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;color:var(--text-dim);user-select:none;clip-path:polygon(6px 0,100% 0,100% 100%,0 100%,0 6px);}
-.slot-pill.on{border-color:var(--accent-2);color:var(--accent-1);background:var(--sel-bg);}
-.slot-pill.off{opacity:.4;}
 .bg-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
-.bg-pick{background:var(--panel);border:1px solid var(--border);color:var(--text-dim);padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;text-align:center;user-select:none;}
+.bg-pick{background:var(--panel);border:1px solid var(--border);color:var(--text-dim);padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;text-align:center;user-select:none;border-radius:7px;}
 .bg-pick.on{border-color:var(--accent-2);color:var(--accent-1);background:var(--sel-bg);}
-.emote-btn{background:var(--panel);border:1px solid var(--border);color:var(--text-dim);padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;text-align:center;user-select:none;}
+.emote-btn{background:var(--panel);border:1px solid var(--border);color:var(--text-dim);padding:7px 4px;font-size:11px;font-weight:700;cursor:pointer;text-align:center;user-select:none;border-radius:7px;}
 .emote-btn:hover{border-color:var(--accent-2);color:var(--accent-1);}
 .emote-btn:active{background:var(--sel-bg);}
 
 /* ---- status bar ---- */
-.statusbar{flex-shrink:0;padding:7px 16px;font-size:11px;color:var(--text-faint);border-top:1px solid var(--border-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Consolas,monospace;background:var(--panel-2);}
+/* statusbar removed for a bigger preview (element stays hidden: setStatus writes to it) */
+.statusbar{display:none;}
+/* viewer-first: drawer hidden until the settings button toggles it */
+.nopanel .side{display:none;}
+.nopanel .main{gap:0;}
 
 /* ---- modal ---- */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:20;}
 .modal.show{display:flex;}
-.modal .box{width:440px;max-width:92vw;background:var(--panel);border:1px solid var(--border);padding:20px;position:relative;}
+.modal .box{width:440px;max-width:92vw;background:var(--panel);border:1px solid var(--border);padding:20px;position:relative;border-radius:12px;}
 .modal .box::before,.modal .box::after{content:'';position:absolute;width:10px;height:10px;border-color:var(--accent-2);}
 .modal .box::before{top:6px;left:6px;border-top:1px solid;border-left:1px solid;}
 .modal .box::after{bottom:6px;right:6px;border-bottom:1px solid;border-right:1px solid;}
@@ -129,42 +134,42 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .modal .mtop{display:flex;justify-content:flex-end;margin-bottom:4px;}
 .modal .mtop button{background:transparent;border:none;color:var(--text-faint);font-size:16px;cursor:pointer;}
 .modal .mtop button:hover{color:var(--accent-1);}
-.modal textarea{width:100%;height:120px;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:8px;font-size:12px;resize:vertical;font-family:Consolas,monospace;}
+.modal textarea{width:100%;height:120px;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:8px;font-size:12px;resize:vertical;font-family:Consolas,monospace;border-radius:6px;}
 </style>
+<link rel="stylesheet" href="drop.css">
 </head>
-<body>
+<body class="nopanel">
 
 <div class="titlebar">
   <div class="brand">
     <div class="brand-mark"></div>
     <div class="brand-text">FLASHBOX</div>
     <div class="menu">
-      <button id="menuLoad">Load Character</button>
-      <button id="menuSave">Save</button>
-      <button id="menuOpen">Open</button>
-      <button id="menuAbout">About</button>
     </div>
   </div>
   <div class="win-controls">
+    <button class="win-btn" id="bSettings" title="Settings"><svg viewBox="0 0 12 12" width="12" height="12"><circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 0.8v1.7M6 9.5v1.7M0.8 6h1.7M9.5 6h1.7M2.2 2.2l1.2 1.2M8.6 8.6l1.2 1.2M9.8 2.2L8.6 3.4M3.4 8.6L2.2 9.8" stroke="currentColor" stroke-width="1.2"/></svg></button>
     <button class="win-btn" id="bMin"><svg viewBox="0 0 11 11"><line x1="0" y1="5.5" x2="11" y2="5.5" stroke="currentColor" stroke-width="1.1"/></svg></button>
-    <button class="win-btn" id="bMax"><svg viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
+    <button class="win-btn" id="bMax"><svg class="ic-max" viewBox="0 0 10 10" width="10" height="10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.2"/></svg><svg class="ic-restore" viewBox="0 0 11 11" width="11" height="11"><path d="M3.5 1.5h6v6M8.5 3.5v-2h-2M1.5 9.5v-6h6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
     <button class="win-btn close" id="bClose"><svg viewBox="0 0 11 11"><line x1="0" y1="0" x2="11" y2="11" stroke="currentColor" stroke-width="1.1"/><line x1="11" y1="0" x2="0" y2="11" stroke="currentColor" stroke-width="1.1"/></svg></button>
   </div>
 </div>
 
-<div class="loadbar">
-  <div class="lb-field"><span class="brk">CHR</span><input type="text" id="charName" placeholder="Character name"></div>
-  <div class="lb-field folder"><span class="brk">DIR</span><input type="text" id="folder" placeholder="Output folder for SWFs"></div>
-  <button class="action-btn" id="btnBrowse">Browse</button>
-  <button class="action-btn" id="btnLoad">Load</button>
-  <div class="progress" id="progress">
-    <div class="pbar"><div class="fill" id="pfill"></div></div>
-    <div class="ptext" id="ptext"></div>
-  </div>
+<!-- viewer-first: no loadbar. Names load via the native center line;
+     charName stays hidden so load logic is untouched. Folder picker lives
+     in the drawer now. -->
+<input type="text" id="charName" style="display:none;">
+<div class="progress" id="progress">
+  <div class="pbar"><div class="fill" id="pfill"></div></div>
+  <div class="ptext" id="ptext"></div>
 </div>
 
 <div class="main">
   <div class="side">
+    <div class="folderset">
+      <div class="lb-field folder"><span class="brk">DIR</span><input type="text" id="folder" placeholder="Output folder for SWFs"></div>
+      <button class="action-btn" id="btnBrowse" style="width:100%;margin-top:6px;">Browse</button>
+    </div>
     <div class="rail">
       <div class="tab active" data-t="monitor"><svg viewBox="0 0 20 20"><path d="M3 15V9M9 15V4M15 15v-7"/></svg>Monitor</div>
       <div class="tab" data-t="backgrounds"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="1"/><circle cx="7" cy="8" r="1.4"/><path d="M4 15l4.5-4.5L11 13l3-3 2 2"/></svg>BG</div>
@@ -254,22 +259,10 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
         <div id="hostHint">Loading Flash renderer&hellip;</div>
       </div>
     </div>
-    <div class="slots">
-      <label>Outfit</label>
-      <div class="slot-pill off" id="cosPill">Cosmetics</div>
-    </div>
   </div>
 </div>
 
 <div class="statusbar" id="status">Ready. Enter a character name, pick a folder, and click Load.</div>
-
-<div class="modal" id="modalAbout">
-  <div class="box">
-    <div class="mtop"><button data-close="modalAbout">&times;</button></div>
-    <h3>FlashBox</h3>
-    <p>FlashBox rebuilt as a combined WinForms + WebView2 app. Loads a character from aq.com, downloads the equipped item SWFs, and previews them with the same real-Flash renderer — now hosted in the same window, so nothing glitches when you drag or click away.</p>
-  </div>
-</div>
 
 <script>
 /* ---- WebView2 IPC via host objects (the web-message channel is unreliable on this machine) ---- */
@@ -286,7 +279,11 @@ function post(method, args) {
       case 'background': return __fb.background(args.name).then(() => null);
       case 'reset': return __fb.reset().then(() => null);
       case 'gear': return __fb.gear(args.rows).then(() => null);
+      case 'cosmetics': return __fb.cosmetics(args.state).then(() => null);
+      case 'cosSeq': return __fb.cosmeticsSeq();
+      case 'loadName': return __fb.loadNameRequest();
       case 'loadItem': return __fb.loadItem(args.ItemType, args.ItemFile, args.WeaponType || '').then(() => null);
+      case 'dropItemBytes': return __fb.dropItemBytes(args.itemType, args.fileName, args.b64).then(() => null);
       case '__jsLog': return __fb.jsLog(JSON.stringify(args || {})).then(() => null);
       case 'loadChar': return __fb.loadChar(args.name).then(s => JSON.parse(s));
       case 'downloadAll': return __fb.downloadAll(JSON.stringify(args.vars), args.dir).then(s => JSON.parse(s));
@@ -306,6 +303,17 @@ const __fb = window.chrome.webview.hostObjects.fbhost;
 post('__jsLog', { page: 'flashbox-ui v6 drawer host-objects' });
 function on(ev, fn) { (__handlers[ev] = __handlers[ev] || []).push(fn); }
 const __handlers = {};
+// C#->page events (PostWebMessageAsJson). Only explicitly registered event
+// names are dispatched; anything else (e.g. call results) is ignored.
+try {
+  window.chrome.webview.addEventListener('message', e => {
+    let d = null;
+    try { d = JSON.parse(e.data); } catch (err) {}
+    const k = d && d.ev;
+    if (k && __handlers[k]) __handlers[k].forEach(fn => { try { fn(d); } catch (err) {} });
+  });
+} catch (err) {}
+on('win-state', d => document.body.classList.toggle('maximized', !!(d && d.max)));
 
 let progressHandler = null;
 on('progress', p => { if (progressHandler) progressHandler(p); });
@@ -327,6 +335,11 @@ const titlebar = document.querySelector('.titlebar');
 titlebar.addEventListener('mousedown', e => {
   if (e.button !== 0 || e.target.closest('button')) return;
   post('startDrag');
+});
+// Normal-app behavior: double-clicking the titlebar toggles maximize.
+titlebar.addEventListener('dblclick', e => {
+  if (e.target.closest('button')) return;
+  post('maximize');
 });
 
 const statusEl = document.getElementById('status');
@@ -374,7 +387,33 @@ function renderGear() {
     rows.push({ icon: t.toLowerCase(), name: nm, dim: !(s && s.path) });
   });
   post('gear', { rows: JSON.stringify(any ? rows : []) });
+  pushCosmetics();
 }
+
+/* ---- CharPage-style shirt button (native overlay, bottom-right of the
+   preview): the page owns the toggle state; C# only renders it. Clicks on
+   the overlay bump a C# counter, polled below, because C#->JS messages
+   never arrive on this machine. ---- */
+function pushCosmetics() {
+  post('cosmetics', { state: JSON.stringify({ has: Object.keys(project.cosmetics).length > 0, on: project.cosmeticsOn }) });
+}
+function toggleCosmetics() {
+  if (Object.keys(project.cosmetics).length === 0) { setStatus('No cosmetic items on this character.'); return; }
+  project.cosmeticsOn = !project.cosmeticsOn;
+  setStatus(project.cosmeticsOn ? 'Cosmetic outfit on.' : 'Equipped outfit on.');
+  updatePills();
+  renderGear();
+  sendHost();
+}
+let __cosSeq = -1;
+setInterval(async () => {
+  try {
+    const s = await post('cosSeq');
+    if (typeof s !== 'number') return;
+    if (__cosSeq !== -1 && s !== __cosSeq) toggleCosmetics();
+    __cosSeq = s;
+  } catch (e) {}
+}, 700);
 
 /* ---- Flash IPC helpers ---- */
 function flashCall(method, params) {
@@ -400,11 +439,11 @@ function sendHost() {
 }
 async function runSendHost() {
   const some = SLOT_TYPES.some(t => { const s = activeEntry(t); return s && s.enabled && s.path; });
-  // A fresh player has nothing attached: resetting it only blinks the
-  // preview (the startup "reload"). Reset solely to clear previous items.
-  if (__everLoaded || some) {
-    await post('reset');
-    await new Promise(r => setTimeout(r, 400));
+  // No full player rebuild here: resetting disposes and recreates the whole
+  // Flash control, which is the visible blink on every load/toggle.
+  // load* calls replace their slot in place, so just swap per slot. Only the
+  // very first load waits for isReady (fresh player, nothing to clear).
+  if (!__everLoaded && some) {
   // The player unpacks embedded content asynchronously. Wait until its
   // isReady flag is up before sending items; otherwise load* calls can
   // fail silently (black avatar). Players without isReady fall back to
@@ -431,6 +470,7 @@ async function runSendHost() {
   for (const t of SLOT_TYPES) {
     const s = activeEntry(t);
     if (s && s.enabled && s.path) {
+      await showSlot(t); // undo any stale hidden flag from the previous outfit
       const msg = { ItemType: t, ItemFile: s.path };
       // CharPage parity: the player splits Dagger-typed weapons across both
       // hands (direct-attach). Tell it which set is active (cos or base).
@@ -439,31 +479,56 @@ async function runSendHost() {
         msg.WeaponType = isCos ? (project.vars['strCustWeaponType'] || '') : (project.vars['strWeaponType'] || '');
       }
       await post('loadItem', msg);
+    } else if (__everLoaded) {
+      // Slot empty/disabled on the new outfit: clear the previous
+      // character's item without rebuilding the player.
+      await clearSlot(t);
     }
   }
   if (some) __everLoaded = true;
-  applyExtraState();
+  await applyExtraState();
 }
-/* a reset rebuilds the Flash control from scratch, so re-apply every piece
-   of player state the UI can change (mirrors the control handlers below).
+/* Per-slot visibility, mirroring the player's hide calls (CharPage parity:
+   visible = (arg == "False")). showSlot undoes a stale hidden flag before a
+   fresh load* attaches; clearSlot empties a slot the new outfit leaves bare.
+   Every call is awaited: host-object calls are async, and an unawaited
+   hide landing after a later load is exactly how items "sometimes" vanish.
+   Unknown methods fail silently in the player, so guarded calls are safe. */
+async function slotFlag(t, hide) {
+  const v = hide ? 'True' : 'False';
+  switch (t) {
+    case 'Hair': await post('flashCall', { method: 'hideHair', params: [v] }); break;
+    case 'Helm': await post('flashCall', { method: 'hideHelm', params: [v] }); break;
+    case 'Armor': await post('flashCall', { method: 'hideArmor', params: [v] }); break;
+    case 'Cape': await post('flashCall', { method: 'hideCape', params: [v] }); break;
+    case 'Weapon': await post('flashCall', { method: 'unarmed', params: [v] }); break;
+    case 'Pet': await post('flashCall', { method: 'hidePet', params: [v] }); break;
+    case 'Misc': await post('flashCall', { method: 'hideMisc', params: [v] }); break;
+  }
+}
+async function showSlot(t) { await slotFlag(t, false); }
+async function clearSlot(t) { await slotFlag(t, true); }
+/* Re-apply every piece of player state the UI can change (mirrors the
+   control handlers below). Fully awaited like the slot loop above: leaving
+   these fire-and-forget lets a queued re-run overtake them and drop state.
    The player is char6.swf with native loadMisc, so every call is
    understood. */
-function applyExtraState() {
+async function applyExtraState() {
   sendBackground();
-  flashCall('loadResize', [String(project.scale / 100)]);
-  Object.keys(colorMethods).forEach(id => {
+  await post('flashCall', { method: 'loadResize', params: [String(project.scale / 100)] });
+  for (const id of Object.keys(colorMethods)) {
     const c = project.colors[id] || '#ffffff';
-    flashCall(colorMethods[id], [String(parseInt(c.slice(1), 16))]);
-  });
-  flashCall('changeUserName', [project.nameShow && project.nameText ? project.nameText : '']);
-  Object.keys(nameMethods).forEach(k => {
-    if (project.nameFields[k]) flashCall(nameMethods[k], [project.nameFields[k]]);
-  });
-  updateUIVisibility();
-  if (project.hideHelm) flashCall('hideHelm', ['True']);
-  if (project.hideCape) flashCall('hideCape', ['True']);
-  if (project.hidePet) flashCall('hidePet', ['True']);
-  if (project.hideWeapon) flashCall('unarmed', ['True']);
+    await post('flashCall', { method: colorMethods[id], params: [String(parseInt(c.slice(1), 16))] });
+  }
+  await post('flashCall', { method: 'changeUserName', params: [project.nameShow && project.nameText ? project.nameText : ''] });
+  for (const k of Object.keys(nameMethods)) {
+    if (project.nameFields[k]) await post('flashCall', { method: nameMethods[k], params: [project.nameFields[k]] });
+  }
+  await post('flashCall', { method: 'closeUii', params: [project.showNames && !project.hideUI ? 'True' : 'False'] });
+  if (project.hideHelm) await post('flashCall', { method: 'hideHelm', params: ['True'] });
+  if (project.hideCape) await post('flashCall', { method: 'hideCape', params: ['True'] });
+  if (project.hidePet) await post('flashCall', { method: 'hidePet', params: ['True'] });
+  if (project.hideWeapon) await post('flashCall', { method: 'unarmed', params: ['True'] });
 }
 /* closeUii compares against capital "True" (param == "True" shows the
    labels), so it needs the capitalized form - lowercase "true" hides.
@@ -550,16 +615,28 @@ document.getElementById('btnClearSideLog').onclick = async () => { await post('c
 document.querySelectorAll('.modal [data-close]').forEach(b => {
   b.onclick = () => b.closest('.modal').classList.remove('show');
 });
-document.getElementById('menuAbout').onclick = () => document.getElementById('modalAbout').classList.add('show');
 
-/* ---- folder + load ---- */
+/* ---- folder (lives in the drawer now) ---- */
 document.getElementById('btnBrowse').onclick = async () => {
   const f = await post('pickFolder');
   if (f) document.getElementById('folder').value = f;
 };
-document.getElementById('menuLoad').onclick = loadCharacter;
-document.getElementById('btnLoad').onclick = loadCharacter;
-document.getElementById('charName').addEventListener('keydown', e => { if (e.key === 'Enter') loadCharacter(); });
+
+/* ---- drawer ---- */
+document.getElementById('bSettings').onclick = () => document.body.classList.toggle('nopanel');
+window.addEventListener('keydown', e => { if (e.key === 'Escape') document.body.classList.add('nopanel'); });
+
+/* ---- native loader line: C# collects the name, the page polls for it ---- */
+setInterval(async () => {
+  if (__loading) return;
+  try {
+    const n = await post('loadName');
+    if (typeof n === 'string' && n.trim()) {
+      document.getElementById('charName').value = n.trim();
+      loadCharacter();
+    }
+  } catch (e) {}
+}, 700);
 
 async function loadCharacter() {
   const name = document.getElementById('charName').value.trim();
@@ -606,14 +683,18 @@ async function loadCharacter() {
       Helm: vars['strCustHelmName'] || '',
       Cape: vars['strCustCapeName'] || ''
     };
+    // Fresh character starts on the equipped outfit: reset the cosmetics
+    // toggle BEFORE the first render, otherwise a stale cosmeticsOn from the
+    // previous character renders the new (still empty) cosmetic set, posts
+    // an empty row list, and the overlay hides itself with no re-render.
+    project.slots = {};
+    project.cosmetics = {};
+    project.cosmeticsOn = false;
     renderGear();
     monitorEl.textContent = formatVars(vars);
     setStatus('Downloading item SWFs to ' + dir + '...');
     const dl = await post('downloadAll', { vars, dir });
     if (!dl || !dl.items) { setStatus('Failed: ' + ((dl && dl.__postError) || 'no download reply')); __loading = false; setBusy(false); return; }
-    project.slots = {};
-    project.cosmetics = {};
-    project.cosmeticsOn = false;
     const pbar = document.getElementById('pfill');
     const ptext = document.getElementById('ptext');
     const prog = document.getElementById('progress');
@@ -637,6 +718,7 @@ async function loadCharacter() {
     monitorEl.textContent = formatVars(vars) + '\n\nDownloaded to:\n' + dl.dir + '\n'
       + dl.items.map(it => (it.ok ? '[ok] ' : '[FAIL] ') + (it.cosmetic ? '(cos) ' : '') + it.type + '  ' + it.file + (it.ok ? '\n         -> ' + it.path : '')).join('\n');
     updatePills();
+    renderGear(); // paths now exist: refresh dim flags + recover the list
     await sendHost();
     refreshSideLog();
     reportRect();
@@ -657,52 +739,17 @@ function formatVars(vars) {
 }
 
 function setBusy(b) {
-  document.getElementById('btnLoad').disabled = b;
-  document.getElementById('btnBrowse').disabled = b;
+  const btnBrowse = document.getElementById('btnBrowse');
+  if (btnBrowse) btnBrowse.disabled = b;
 }
 
-/* ---- slot pills ---- */
+/* ---- outfit state ---- */
+/* The old Cosmetics pill lived here; the native shirt button over the
+   preview is the toggle now. updatePills stays (callers use it) as the hook
+   that pushes outfit state to the overlay after downloads/toggles. */
 function updatePills() {
-  const all = SLOT_TYPES.every(t => { const s = activeEntry(t); return !s || s.enabled; });
-  document.querySelectorAll('.slot-pill').forEach(p => {
-    if (p.id === 'cosPill') {
-      const has = Object.keys(project.cosmetics).length > 0;
-      p.classList.toggle('on', project.cosmeticsOn && has);
-      p.classList.toggle('off', !project.cosmeticsOn || !has);
-      return;
-    }
-    if (p.dataset.slot === 'all') { p.classList.toggle('on', all); p.classList.toggle('off', !all); return; }
-    const s = activeEntry(p.dataset.slot);
-    p.classList.toggle('on', !!(s && s.enabled));
-    p.classList.toggle('off', !(s && s.enabled));
-  });
+  pushCosmetics();
 }
-
-document.getElementById('cosPill').onclick = () => {
-  if (Object.keys(project.cosmetics).length === 0) { setStatus('No cosmetic items on this character.'); return; }
-  project.cosmeticsOn = !project.cosmeticsOn;
-  setStatus(project.cosmeticsOn ? 'Cosmetic outfit on.' : 'Equipped outfit on.');
-  updatePills();
-  renderGear();
-  sendHost();
-};
-
-document.querySelectorAll('.slot-pill').forEach(p => {
-  if (p.id === 'cosPill') return;
-  p.onclick = () => {
-    const slot = p.dataset.slot;
-    if (slot === 'all') {
-      const anyOn = SLOT_TYPES.some(t => { const s = activeEntry(t); return s && s.enabled; });
-      const target = !anyOn;
-      SLOT_TYPES.forEach(t => { const s = activeEntry(t); if (s) s.enabled = target; });
-    } else {
-      const s = activeEntry(slot);
-      if (s) s.enabled = !s.enabled;
-    }
-    updatePills();
-    sendHost();
-  };
-});
 
 /* ---- emotes (labels straight from the player's timeline) ---- */
 const EMOTES = ['Idle', 'Dance', 'Dance2', 'Laugh', 'Point', 'Wave', 'Bow', 'Cheer', 'Salute', 'Salute2', 'Cry', 'Cry2', 'Sleep', 'Rest', 'Kneel', 'Punt', 'Unsheath', 'Thrash', 'Facepalm', 'Airguitar', 'Backflip', 'Headbang', 'Stepdance', 'Samba', 'Spar', 'Dazed', 'Dodge', 'Powerup', 'Jumpcheer', 'Psychic1', 'Psychic2', 'Throw', 'FireBreath', 'Swordplay', 'Feign', 'Dead', 'Stern', 'Jump', 'Attack1', 'Attack2'];
@@ -789,47 +836,10 @@ document.getElementById('hideUI').onchange = e => {
   updateUIVisibility();
 };
 
-/* ---- save / open project ---- */
-document.getElementById('menuSave').onclick = async () => {
-  const data = JSON.stringify(project, null, 2);
-  const p = await post('saveFile', { data, name: (project.name ? project.name + '.fbp' : 'flashbox.fbp') });
-  setStatus(p ? 'Project saved: ' + p : 'Save cancelled');
-};
-document.getElementById('menuOpen').onclick = async () => {
-  const raw = await post('openFile');
-  if (!raw) { setStatus('Open cancelled.'); return; }
-  try {
-    const info = JSON.parse(raw);
-    const saved = JSON.parse(info.data);
-    Object.keys(project).forEach(k => { if (saved[k] !== undefined) project[k] = saved[k]; });
-    document.getElementById('charName').value = project.name || '';
-    document.getElementById('folder').value = info.path ? info.path.split(/[\\/]/).slice(0, -1).join('\\') : '';
-    bgColor.value = project.background[0] === '#' ? project.background : '#0A0C14';
-    updateBgPicks();
-    scaleInput.value = project.scale;
-    document.getElementById('scaleVal').textContent = project.scale + '%';
-    nameText.value = project.nameText;
-    document.getElementById('nameShow').checked = !!project.nameShow;
-    document.getElementById('showNames').checked = !!project.showNames;
-    document.getElementById('hideUI').checked = !!project.hideUI;
-    Object.keys(nameMethods).forEach(k => { document.getElementById(nameInputs[k]).value = (project.nameFields && project.nameFields[k]) || ''; });
-    renderGear();
-    Object.keys(colorMethods).forEach(id => {
-      const v = project.colors[id] || '#ffffff';
-      document.getElementById(id).value = v;
-    });
-    updatePills();
-    sendBackground();
-    sendHost();
-    setStatus('Project opened: ' + info.path);
-  } catch (err) {
-    setStatus('Failed to open project: ' + err.message);
-  }
-};
-
 reportRect();
 post('getAppDir').then(d => { if (d && !document.getElementById('folder').value) document.getElementById('folder').value = d + '\\swf'; });
 setStatus('Ready. Enter a character name and click Load.');
 </script>
+<script src="drop.js"></script>
 </body>
 </html>

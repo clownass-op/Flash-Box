@@ -134,17 +134,90 @@ namespace FlashBoxApp
             byte[] bytes;
             try { bytes = File.ReadAllBytes(itemFile); }
             catch (Exception ex) { Dbg("LoadItem read fail: " + ex.Message); return; }
+            LoadItemBytes(itemType, bytes, Path.GetFileName(itemFile), weaponType);
+        }
+
+        // Same as LoadItem but from in-memory bytes (drag-and-drop SWFs that
+        // were never saved to disk).
+        public void LoadItemBytes(string itemType, byte[] bytes, string name, string weaponType)
+        {
+            if (bytes == null || bytes.Length < 4) return;
+            ItemType type;
+            if (!Enum.TryParse(itemType, true, out type)) { Dbg("LoadItem unknown type: " + itemType); return; }
             try
             {
                 string linkage = LinkageParser.Parse(bytes, type, this);
                 string b64 = Convert.ToBase64String(bytes);
-                Dbg("LoadItem " + itemType + " " + Path.GetFileName(itemFile) + " size=" + bytes.Length + " base64=" + b64.Length + " linkage=" + (linkage ?? "NULL"));
+                Dbg("LoadItem " + itemType + " " + name + " size=" + bytes.Length + " base64=" + b64.Length + " linkage=" + (linkage ?? "NULL"));
+                if (type == ItemType.Helm)
+                {
+                    _helmB64 = b64;
+                    _helmLink = linkage ?? "";
+                    _helmLoaded = true;
+                }
                 if (type == ItemType.Weapon && !string.IsNullOrEmpty(weaponType))
                     Call("loadWeapon", b64, linkage ?? "", weaponType);
                 else
-                    Call("load" + itemType, b64, linkage ?? "");
+                    Call("load" + type.ToString(), b64, linkage ?? "");
             }
             catch (Exception ex) { Dbg("LoadItem fail: " + ex.Message); }
+        }
+
+        string _helmB64;
+        string _helmLink;
+        bool _helmLoaded;
+
+        public void ClearHelmCache() { _helmB64 = null; _helmLink = null; _helmLoaded = false; }
+
+        // Unhide by reloading the current helm instead of a bare
+        // hideHelm("False"): the player's unhide unconditionally re-shows
+        // the backhair clip, which pops a stale template backhair behind
+        // helms that define no "<link>_backhair" symbol (e.g. full-head
+        // morphs). Reloading re-runs the load completion logic, which only
+        // shows backhair when the symbol exists. Falls back to the plain
+        // unhide when no helm is cached for this outfit.
+        public void UnhideHelm()
+        {
+            if (_helmLoaded && _helmB64 != null)
+            {
+                Dbg("UnhideHelm via reload link=" + _helmLink);
+                try { Call("hideHelm", "False"); } catch { }
+                try { Call("loadHelm", _helmB64, _helmLink ?? ""); } catch { }
+            }
+            else
+            {
+                FlashCall("hideHelm", new[] { "False" });
+            }
+        }
+
+        // Split items (sword+shield sets) carry the dual-wield parent check
+        // referencing "weaponOff" in their bytecode; plain weapons don't.
+        // Used to pick the CharPage-style attach path for dropped weapons.
+        public static string DetectWeaponType(byte[] swf)
+        {
+            try
+            {
+                byte[] data = swf;
+                if (data.Length > 8 && data[0] == (byte)'C' && data[1] == (byte)'W' && data[2] == (byte)'S')
+                {
+                    using (var ms = new MemoryStream(data, 8, data.Length - 8))
+                    using (var inf = new InflaterInputStream(ms))
+                    using (var outMs = new MemoryStream())
+                    {
+                        inf.CopyTo(outMs);
+                        data = outMs.ToArray();
+                    }
+                }
+                byte[] needle = Encoding.ASCII.GetBytes("weaponOff");
+                for (int i = 0; i + needle.Length <= data.Length; i++)
+                {
+                    int j = 0;
+                    while (j < needle.Length && data[i + j] == needle[j]) j++;
+                    if (j == needle.Length) return "Dagger";
+                }
+            }
+            catch { }
+            return "";
         }
 
         // Synchronous no-arg query (used for isReady/getStatus polling).

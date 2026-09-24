@@ -1,0 +1,12 @@
+/* ---- drop slot boxes (classic FlashBox style) ----
+   Tweak freely: labels (.drop-label), boxes (.drop-box), row layout
+   (#dropBoxes .row), hover states (.cell.over). Slots themselves live in
+   DROP_SLOTS at the top of drop.js. */
+#dropBoxes{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:flex-start;justify-content:flex-start;z-index:30;padding:64px 0 0 24px;}
+#dropBoxes .row{display:flex;gap:14px;flex-wrap:wrap;max-width:290px;}
+#dropBoxes .cell{display:flex;flex-direction:column;align-items:center;gap:8px;}
+#dropBoxes .drop-label{font-size:15px;font-weight:700;color:#c9ccd4;letter-spacing:.3px;}
+#dropBoxes .drop-box{width:118px;height:92px;background:#14161c;border:2px solid #2a2e38;border-radius:8px;transition:border-color .12s,background .12s;}
+#dropBoxes .cell.over .drop-label{color:#00e5ff;}
+#dropBoxes .cell.over .drop-box{border-color:#00e5ff;background:#182027;}
+#dropBoxes .hint{position:fixed;left:0;right:0;bottom:26px;text-align:center;font-size:12px;color:#8a8f9a;}

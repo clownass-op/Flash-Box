@@ -35,6 +35,13 @@ old-style project references it directly with no `packages.config`).
    side panel. Click the gear-list icons floating over the preview to
    hide/show individual pieces.
 
+Tip: you can also drag any `.swf` file onto the Flash preview — Hair /
+Helm / Armor / Cape / Weapon / Pet slot boxes appear over it, and the file
+loads straight into that slot (never saved to disk). Box look and slots
+live in `ui\dropboxes.json`, no rebuild needed. Split weapon sets are
+auto-detected and split across both hands like CharPage. (Dragging onto
+the side panel works too, via `ui\drop.js`.)
+
 Item SWFs download on demand next to the exe; backgrounds ship in `flash\`
 (drop another `.swf` in there and it appears in the BG tab).
 
@@ -49,7 +56,11 @@ Item SWFs download on demand next to the exe; backgrounds ship in `flash\`
   names, colors, log/monitor).
 - `flash/char6.swf` — the avatar player, patched with RABCDAsm (native
   ground-rune `loadMisc`, cosmetic/name support, Dagger-type weapons
-  attached CharPage-style directly to `weapon`/`weaponOff`).
+  attached CharPage-style directly to `weapon`/`weaponOff`) plus an FFDec
+  script patch: `hideHelm` unhide only re-shows the backhair clip when the
+  loaded helm actually defines a `<link>_backhair` symbol, so hiding and
+  unhiding a backhair-less helm (e.g. full-head morphs) no longer pops a
+  stale template backhair into view.
   `flash/char6-orig.swf` is the untouched backup.
 
 ## Notes
