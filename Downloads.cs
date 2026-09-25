@@ -13,7 +13,7 @@ namespace FlashBoxApp
     class Downloads
     {
         const string UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) FlashBox/1.0";
-        const string GAME = "https://game.aq.com/game/gamefiles/";
+        internal const string GAME = "https://game.aq.com/game/gamefiles/";
 
         static readonly string[] INVALID = { "none", "undefined" };
         static bool Valid(string name)
@@ -23,12 +23,23 @@ namespace FlashBoxApp
             foreach (var b in INVALID) if (s == b) return false;
             return true;
         }
-        static string BaseOf(string u)
+        // Local cache path for a game file: the CDN-relative path, kept as
+        // folders (hair\F\Bob.swf, classes\M\x.swf). Caching by bare file
+        // name made same-named files collide - most visibly the male and
+        // female versions of a hair or class armor, so the next character
+        // silently reused the wrong gender's art. ".." / rooted segments are
+        // dropped so a CharPage value can never escape the output folder.
+        public static string LocalPathOf(string relUrl)
         {
-            string[] parts = (u ?? "").Split('/');
-            for (int i = parts.Length - 1; i >= 0; i--)
-                if (parts[i].Length > 0) return parts[i];
-            return "";
+            var keep = new List<string>();
+            foreach (var raw in (relUrl ?? "").Split('/', '\\'))
+            {
+                string p = raw.Split('?', '#')[0].Trim();
+                if (p.Length == 0 || p == "." || p == "..") continue;
+                foreach (char c in Path.GetInvalidFileNameChars()) p = p.Replace(c, '_');
+                keep.Add(p);
+            }
+            return string.Join("\\", keep);
         }
 
         // Fetch a character page (follows redirects), returns raw HTML body.
@@ -88,17 +99,25 @@ namespace FlashBoxApp
                             resp.Close();
                             return false;
                         }
+                        // Write to a side file and move it into place: an
+                        // interrupted download must not leave a truncated
+                        // SWF that the cache would then reuse forever.
+                        string part = dest + ".part";
+                        string folder = Path.GetDirectoryName(dest);
+                        if (!string.IsNullOrEmpty(folder)) Directory.CreateDirectory(folder);
                         using (var src = resp.GetResponseStream())
-                        using (var dst = File.Create(dest))
+                        using (var dst = File.Create(part))
                         {
                             await src.CopyToAsync(dst);
                         }
+                        if (File.Exists(dest)) File.Delete(dest);
+                        File.Move(part, dest);
                         return true;
                     }
                 }
                 catch
                 {
-                    try { if (File.Exists(dest)) File.Delete(dest); } catch { }
+                    try { if (File.Exists(dest + ".part")) File.Delete(dest + ".part"); } catch { }
                     return false;
                 }
             }
@@ -133,42 +152,62 @@ namespace FlashBoxApp
         {
             public string Type;
             public string Url;
-            public string File;
+            public string File;   // cache path relative to the output folder
+            public string Link;   // CharPage linkage (strXLink), "" = parse the SWF
             public bool Cosmetic;
+        }
+
+        static string Var(Dictionary<string, string> vars, string key)
+        {
+            string v;
+            return vars.TryGetValue(key, out v) && Valid(v) ? v : "";
         }
 
         public static List<ItemDownload> BuildDownloads(Dictionary<string, string> vars)
         {
             var outList = new List<ItemDownload>();
-            string gender = vars.ContainsKey("strGender") ? vars["strGender"] : "";
-            Add(outList, vars, "Hair", "strHairName", "strHairFile", GAME, false);
-            Add(outList, vars, "Helm", "strHelmName", "strHelmFile", GAME, false);
-            Add(outList, vars, "Cape", "strCapeName", "strCapeFile", GAME, false);
-            string armorName = vars.ContainsKey("strArmorName") ? vars["strArmorName"] : "";
-            string armorFile = vars.ContainsKey("strClassFile") ? vars["strClassFile"] : "";
-            if (Valid(armorName) && Valid(armorFile))
-                outList.Add(new ItemDownload { Type = "Armor", Url = GAME + "classes/" + gender + "/" + armorFile, File = BaseOf(armorFile), Cosmetic = false });
-            Add(outList, vars, "Weapon", "strWeaponName", "strWeaponFile", GAME, false);
-            Add(outList, vars, "Pet", "strPetName", "strPetFile", GAME, false);
-            Add(outList, vars, "Misc", "strMiscName", "strMiscFile", GAME, false);
+            string gender = Var(vars, "strGender");
+            Add(outList, vars, "Hair", "strHairName", "strHairFile", "strHairName", false);
+            Add(outList, vars, "Helm", "strHelmName", "strHelmFile", "strHelmLink", false);
+            Add(outList, vars, "Cape", "strCapeName", "strCapeFile", "strCapeLink", false);
+            AddArmor(outList, vars, gender, "strArmorName", "strClassFile", "strClassLink", false);
+            Add(outList, vars, "Weapon", "strWeaponName", "strWeaponFile", "strWeaponLink", false);
+            Add(outList, vars, "Pet", "strPetName", "strPetFile", "strPetLink", false);
+            Add(outList, vars, "Misc", "strMiscName", "strMiscFile", "strMiscLink", false);
             // Cosmetic (custom) outfit: same slots, shown by the CharPage
             // "Cosmetics" toggle. Armor follows the same classes/{gender}/ rule.
-            Add(outList, vars, "Helm", "strCustHelmName", "strCustHelmFile", GAME, true);
-            Add(outList, vars, "Cape", "strCustCapeName", "strCustCapeFile", GAME, true);
-            Add(outList, vars, "Weapon", "strCustWeaponName", "strCustWeaponFile", GAME, true);
-            string custArmorName = vars.ContainsKey("strCustArmorName") ? vars["strCustArmorName"] : "";
-            string custArmorFile = vars.ContainsKey("strCustArmorFile") ? vars["strCustArmorFile"] : "";
-            if (Valid(custArmorName) && Valid(custArmorFile))
-                outList.Add(new ItemDownload { Type = "Armor", Url = GAME + "classes/" + gender + "/" + custArmorFile, File = BaseOf(custArmorFile), Cosmetic = true });
+            Add(outList, vars, "Helm", "strCustHelmName", "strCustHelmFile", "strCustHelmLink", true);
+            Add(outList, vars, "Cape", "strCustCapeName", "strCustCapeFile", "strCustCapeLink", true);
+            Add(outList, vars, "Weapon", "strCustWeaponName", "strCustWeaponFile", "strCustWeaponLink", true);
+            AddArmor(outList, vars, gender, "strCustArmorName", "strCustArmorFile", "strCustArmorLink", true);
             return outList;
         }
 
-        static void Add(List<ItemDownload> list, Dictionary<string, string> vars, string type, string nameKey, string fileKey, string prefix, bool cosmetic)
+        static void AddArmor(List<ItemDownload> list, Dictionary<string, string> vars, string gender, string nameKey, string fileKey, string linkKey, bool cosmetic)
         {
-            string name = vars.ContainsKey(nameKey) ? vars[nameKey] : "";
-            string file = vars.ContainsKey(fileKey) ? vars[fileKey] : "";
-            if (Valid(name) && Valid(file))
-                list.Add(new ItemDownload { Type = type, Url = prefix + file, File = BaseOf(file), Cosmetic = cosmetic });
+            string name = Var(vars, nameKey), file = Var(vars, fileKey);
+            if (name.Length == 0 || file.Length == 0) return;
+            string rel = "classes/" + gender + "/" + file;
+            list.Add(new ItemDownload { Type = "Armor", Url = GAME + rel, File = LocalPathOf(rel), Link = Var(vars, linkKey), Cosmetic = cosmetic });
+        }
+
+        static void Add(List<ItemDownload> list, Dictionary<string, string> vars, string type, string nameKey, string fileKey, string linkKey, bool cosmetic)
+        {
+            string name = Var(vars, nameKey), file = Var(vars, fileKey);
+            if (name.Length == 0 || file.Length == 0) return;
+            list.Add(new ItemDownload { Type = type, Url = GAME + file, File = LocalPathOf(file), Link = Var(vars, linkKey), Cosmetic = cosmetic });
+        }
+
+        // Cached copy if present, else download. Returns the local path or
+        // null. (Both the host-object and web-message paths use this.)
+        public static async Task<string> EnsureLocalAsync(ItemDownload it, string dir)
+        {
+            if (string.IsNullOrEmpty(it.File)) return null;
+            string dest = Path.Combine(dir, it.File);
+            bool ok;
+            try { ok = System.IO.File.Exists(dest) && new FileInfo(dest).Length > 0; } catch { ok = false; }
+            if (!ok) ok = await DownloadAsync(it.Url, dest).ConfigureAwait(false);
+            return ok ? dest : null;
         }
     }
 }

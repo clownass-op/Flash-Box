@@ -48,6 +48,7 @@
     <Compile Include="FlashCore.cs" />
     <Compile Include="Downloads.cs" />
     <Compile Include="AppForm.cs" />
+    <Compile Include="Headless.cs" />
     <Content Include="ui\index.html">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

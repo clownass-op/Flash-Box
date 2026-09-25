@@ -28,8 +28,10 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 ::-webkit-scrollbar-thumb:hover{background:var(--accent-2);}
 
 /* ---- titlebar ---- */
-.titlebar{height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;background:#2D2D30;padding:0 6px 0 12px;border-bottom:none;-webkit-app-region:drag;position:relative;border-radius:0;}
+.titlebar{height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;background:var(--rail);padding:0 6px 0 12px;border-bottom:none;-webkit-app-region:drag;position:relative;border-radius:0;}
 .titlebar::after{display:none;}
+/* optional classic gray bar (Misc > Gray title bar), matching the preview */
+body.gray-titlebar .titlebar{background:#2D2D30;}
 .brand{display:flex;align-items:center;gap:8px;}
 .brand-mark{width:20px;height:20px;border-radius:5px;flex-shrink:0;background:linear-gradient(135deg,var(--accent-1),var(--accent-3));position:relative;box-shadow:0 0 12px var(--glow);}
 .brand-mark::before{content:'';position:absolute;inset:5px;border-radius:2px;background:var(--bg);}
@@ -79,7 +81,7 @@ body.maximized #bMax .ic-restore{display:inline;}
 
 .drawer{flex-shrink:0;min-width:0;max-width:220px;overflow:hidden;background:var(--panel);border-right:1px solid var(--border-soft);transition:max-width .2s ease,opacity .2s ease;}
 .drawer.wide{max-width:360px;}
-.drawer-inner{width:220px;height:100%;padding:10px;overflow-y:auto;box-sizing:border-box;}
+.drawer-inner{width:220px;height:100%;padding:10px;overflow-y:auto;overflow-x:hidden;box-sizing:border-box;}
 .drawer.wide .drawer-inner{width:360px;}
 .drawer .panel{display:none;height:100%;}
 .drawer .panel.active{display:flex;flex-direction:column;}
@@ -104,13 +106,20 @@ body.maximized #bMax .ic-restore{display:inline;}
 
 .slots{flex-shrink:0;display:flex;align-items:center;gap:6px;padding:6px 0 8px;flex-wrap:wrap;}
 .slots label{font-size:10px;color:var(--text-faint);letter-spacing:1.5px;text-transform:uppercase;font-weight:700;margin-right:4px;}
-.bg-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:flex-start;overflow-y:auto;flex:1;min-height:0;padding:2px;}
+.bg-grid{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:max-content;gap:6px;align-content:flex-start;overflow-y:auto;flex:1;min-height:0;padding:2px;}
 #emoteGrid{grid-template-columns:repeat(3,1fr);}
-.bg-pick,.emote-btn{background:var(--panel-2);border:1px solid var(--border);color:var(--text-dim);padding:8px 6px;font-size:11px;font-weight:600;cursor:pointer;text-align:center;user-select:none;border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;transition:border-color .12s,color .12s,background .12s;}
+.grid-head{grid-column:1/-1;font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-faint);font-weight:700;margin:6px 0 0;}
+.bg-pick,.emote-btn{min-height:30px;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--border);color:var(--text-dim);padding:8px 6px;font-size:11px;font-weight:600;cursor:pointer;text-align:center;user-select:none;border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;transition:border-color .12s,color .12s,background .12s;}
 .bg-pick:hover,.emote-btn:hover{border-color:var(--accent-2);color:var(--accent-1);background:var(--sel-bg);}
 .bg-pick.on{border-color:var(--accent-2);color:var(--accent-1);background:var(--sel-bg);box-shadow:0 0 8px var(--glow);}
 .emote-btn:active{transform:scale(.97);}
-#bgColor{height:30px;}
+/* background color: round swatch + hex + reset, one row */
+.bgcolor-row{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.drawer .panel .bgcolor-row input[type=color]{width:28px;height:28px;padding:0;border:2px solid var(--border);border-radius:50%;background:none;flex-shrink:0;}
+.bgcolor-row input[type=color]::-webkit-color-swatch-wrapper{padding:0;border-radius:50%;}
+.bgcolor-row input[type=color]::-webkit-color-swatch{border:none;border-radius:50%;}
+.bgcolor-row .hex{flex:1;font-family:Consolas,monospace;font-size:11px;color:var(--text-dim);}
+.action-btn.small{height:26px;padding:0 10px;font-size:10.5px;}
 /* modern circular dye-color wheel */
 .wheel-wrap{display:flex;justify-content:center;padding:8px 0 6px;flex-shrink:0;}
 .color-wheel{position:relative;width:172px;height:172px;flex-shrink:0;}
@@ -118,11 +127,11 @@ body.maximized #bMax .ic-restore{display:inline;}
 .wheel-hub{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#232840,var(--panel-2));border:1px solid var(--border);display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px rgba(0,0,0,.45);}
 .wheel-hub svg{width:22px;height:22px;stroke:var(--accent-1);fill:none;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round;}
 .wheel-node{position:absolute;width:38px;display:flex;flex-direction:column;align-items:center;gap:3px;}
-.wheel-node input[type=color]{width:30px;height:30px;padding:0;border:2px solid var(--border);border-radius:50%;background:none;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:border-color .15s,transform .15s;}
+.drawer .panel .wheel-node input[type=color]{width:30px;height:30px;padding:0;border:2px solid var(--border);border-radius:50%;background:none;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:border-color .15s,transform .15s;}
 .wheel-node input[type=color]::-webkit-color-swatch-wrapper{padding:0;border-radius:50%;}
 .wheel-node input[type=color]::-webkit-color-swatch{border:none;border-radius:50%;}
-.wheel-node:hover input[type=color]{border-color:var(--accent-2);transform:scale(1.08);}
-.wheel-node input[type=color]:focus{border-color:var(--accent-1);outline:none;}
+.drawer .panel .wheel-node:hover input[type=color]{border-color:var(--accent-2);transform:scale(1.08);}
+.drawer .panel .wheel-node input[type=color]:focus{border-color:var(--accent-1);outline:none;}
 .wn-label{font-size:7.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-faint);white-space:nowrap;}
 .wheel-hint{text-align:center;font-size:9px;color:var(--text-faint);margin-top:2px;flex-shrink:0;letter-spacing:.3px;}
 /* preview scale: big readout + quick presets */
@@ -147,9 +156,11 @@ body.maximized #bMax .ic-restore{display:inline;}
 #p-misc .row:hover .k{color:var(--text);}
 /* output folder: single-line field + button side by side (flex:1 made it stretch tall) */
 #p-misc .lb-field.folder{flex:none;}
-.folder-row{display:flex;gap:6px;align-items:stretch;}
-.folder-row .lb-field{flex:1;min-width:0;}
-.folder-row .action-btn{flex-shrink:0;}
+.folder-row{display:flex;flex-direction:column;gap:6px;}
+.folder-row .lb-field{min-width:0;}
+.folder-row .lb-field input[type=text]{flex:1;min-width:0;width:auto;}
+.log-actions{display:flex;gap:6px;margin-bottom:8px;flex-shrink:0;}
+.log-actions .action-btn{flex:1;}
 
 /* ---- status bar ---- */
 /* statusbar removed for a bigger preview (element stays hidden: setStatus writes to it) */
@@ -249,7 +260,11 @@ body.maximized #bMax .ic-restore{display:inline;}
         <input type="text" id="bgSearch" class="mini-search" placeholder="Search scenes…">
         <div class="bg-grid" id="bgGrid"></div>
         <label>Background color</label>
-        <input type="color" id="bgColor" value="#2D2D30">
+        <div class="bgcolor-row">
+          <input type="color" id="bgColor" value="#2D2D30" title="Pick a solid background color">
+          <span class="hex" id="bgColorHex">#2D2D30</span>
+          <button class="action-btn small" id="bgColorReset" title="Back to the default gray">Reset</button>
+        </div>
       </div>
       <div class="panel" id="p-emotes">
         <div class="dtitle">Emotes</div>
@@ -304,6 +319,7 @@ body.maximized #bMax .ic-restore{display:inline;}
           <div class="preset-chip" data-v="150">150%</div>
           <div class="preset-chip" data-v="200">200%</div>
         </div>
+        <button class="action-btn" id="btnFlip" style="margin-top:12px;">Flip facing</button>
       </div>
       <div class="panel" id="p-misc">
         <div class="dtitle">Visibility</div>
@@ -311,7 +327,11 @@ body.maximized #bMax .ic-restore{display:inline;}
         <div class="row"><input type="checkbox" id="hideCape"> <span class="k">Hide cape</span></div>
         <div class="row"><input type="checkbox" id="hidePet"> <span class="k">Hide pet</span></div>
         <div class="row"><input type="checkbox" id="hideWeapon"> <span class="k">Hide weapon</span></div>
+        <div class="row"><input type="checkbox" id="hideArmor"> <span class="k">Hide armor</span></div>
+        <div class="row"><input type="checkbox" id="hideMisc"> <span class="k">Hide ground rune</span></div>
         <div class="row"><input type="checkbox" id="hideUI"> <span class="k">Hide interface</span></div>
+        <label>Window</label>
+        <div class="row"><input type="checkbox" id="grayTitle"> <span class="k">Gray title bar</span></div>
         <label>Output folder</label>
         <div class="folder-row">
           <div class="lb-field folder"><span class="brk">DIR</span><input type="text" id="folder" placeholder="Output folder for SWFs"></div>
@@ -320,7 +340,10 @@ body.maximized #bMax .ic-restore{display:inline;}
       </div>
       <div class="panel" id="p-log">
         <div class="dtitle">Log</div>
-        <button class="action-btn" id="btnClearSideLog" style="width:100%;margin-bottom:8px;">Clear log</button>
+        <div class="log-actions">
+          <button class="action-btn" id="btnCopyLog" title="Copy the whole debug log to the clipboard">Copy</button>
+          <button class="action-btn" id="btnClearSideLog">Clear log</button>
+        </div>
         <div class="monitor" id="sideLogView">(empty)</div>
       </div>
   </div></div>
@@ -355,11 +378,13 @@ function post(method, args) {
       case 'cosmetics': return __fb.cosmetics(args.state).then(() => null);
       case 'cosSeq': return __fb.cosmeticsSeq();
       case 'loadName': return __fb.loadNameRequest();
-      case 'loadItem': return __fb.loadItem(args.ItemType, args.ItemFile, args.WeaponType || '').then(() => null);
+      case 'loadItem': return __fb.loadItem(args.ItemType, args.ItemFile, args.WeaponType || '', args.Link || '').then(() => null);
       case 'dropItemBytes': return __fb.dropItemBytes(args.itemType, args.fileName, args.b64).then(() => null);
       case '__jsLog': return __fb.jsLog(JSON.stringify(args || {})).then(() => null);
-      case 'loadChar': return __fb.loadChar(args.name).then(s => JSON.parse(s));
-      case 'downloadAll': return __fb.downloadAll(JSON.stringify(args.vars), args.dir).then(s => JSON.parse(s));
+      case 'loadChar': return __fb.beginLoadChar(args.name).then(awaitJob);
+      case 'downloadAll': return __fb.beginDownloadAll(JSON.stringify(args.vars), args.dir).then(awaitJob);
+      case 'gearClicks': return __fb.takeGearClicks();
+      case 'copyLog': return __fb.copyLog();
       case 'pickFolder': return __fb.pickFolder();
       case 'getAppDir': return __fb.getAppDir();
       case 'getLog': return __fb.getLog();
@@ -372,6 +397,15 @@ function post(method, args) {
     return Promise.resolve({ __postError: String(err && err.message || err) });
   }
 }
+/* Network work runs as a host-side background job (the window stays
+   responsive); poll until it hands back its JSON. */
+async function awaitJob(id) {
+  for (;;) {
+    const r = await __fb.jobResult(id);
+    if (r) return JSON.parse(r);
+    await new Promise(res => setTimeout(res, 120));
+  }
+}
 function __makeMockHost() {
   const ok = v => Promise.resolve(v === undefined ? null : v);
   return {
@@ -380,8 +414,10 @@ function __makeMockHost() {
     background: () => ok(), reset: () => ok(), gear: () => ok(), cosmetics: () => ok(),
     cosmeticsSeq: () => ok(0), loadNameRequest: () => ok(''), loadItem: () => ok(),
     dropItemBytes: () => ok(), jsLog: () => ok(),
-    loadChar: () => ok(JSON.stringify({ ok: false, error: 'Preview mode \u2013 not connected to the FlashBox app.' })),
-    downloadAll: () => ok(JSON.stringify({ items: [] })),
+    beginLoadChar: () => ok('mock-char'), beginDownloadAll: () => ok('mock-dl'),
+    jobResult: id => ok(id === 'mock-dl' ? JSON.stringify({ items: [] })
+      : JSON.stringify({ ok: false, error: 'Preview mode \u2013 not connected to the FlashBox app.' })),
+    takeGearClicks: () => ok('[]'), copyLog: () => ok(true),
     pickFolder: () => ok(''), getAppDir: () => ok(''),
     getLog: () => ok('(preview mode \u2013 no host log)'), clearLog: () => ok(),
     saveFile: () => ok(), openFile: () => ok()
@@ -449,6 +485,7 @@ const project = {
   cosmeticsOn: false,
   gear: {}, // type -> display name (equipped)
   gearCos: {}, // type -> display name (cosmetic)
+  gender: '', // strGender of the loaded character ('M'/'F')
   vars: null // CharPage FlashVars (strWeaponType / strCustWeaponType live here)
 };
 
@@ -555,11 +592,14 @@ async function runSendHost() {
     await post('__jsLog', { step: 'player-ready', state: st });
     }
   }
+  // Gender comes from the character (strGender), before any item loads:
+  // armor/hair symbols are looked up per gender.
+  if (some && project.gender) await post('flashCall', { method: 'setGender', params: [project.gender] });
   for (const t of SLOT_TYPES) {
     const s = activeEntry(t);
     if (s && s.enabled && s.path) {
       await showSlot(t); // undo any stale hidden flag from the previous outfit
-      const msg = { ItemType: t, ItemFile: s.path };
+      const msg = { ItemType: t, ItemFile: s.path, Link: s.link || '' };
       // CharPage parity: the player splits Dagger-typed weapons across both
       // hands (direct-attach). Tell it which set is active (cos or base).
       if (t === 'Weapon' && project.vars) {
@@ -617,6 +657,8 @@ async function applyExtraState() {
   if (project.hideCape) await post('flashCall', { method: 'hideCape', params: ['True'] });
   if (project.hidePet) await post('flashCall', { method: 'hidePet', params: ['True'] });
   if (project.hideWeapon) await post('flashCall', { method: 'unarmed', params: ['True'] });
+  if (project.hideArmor) await post('flashCall', { method: 'hideArmor', params: ['True'] });
+  if (project.hideMisc) await post('flashCall', { method: 'hideMisc', params: ['True'] });
 }
 /* closeUii compares against capital "True" (param == "True" shows the
    labels), so it needs the capitalized form - lowercase "true" hides.
@@ -713,6 +755,12 @@ async function refreshSideLog() {
 function startSideLog() { refreshSideLog(); if (!sideLogTimer) sideLogTimer = setInterval(refreshSideLog, 1000); }
 function stopSideLog() { if (sideLogTimer) { clearInterval(sideLogTimer); sideLogTimer = null; } }
 document.getElementById('btnClearSideLog').onclick = async () => { await post('clearLog'); refreshSideLog(); };
+document.getElementById('btnCopyLog').onclick = async () => {
+  const b = document.getElementById('btnCopyLog');
+  const ok = await post('copyLog');
+  b.textContent = ok ? 'Copied' : 'Copy failed';
+  setTimeout(() => { b.textContent = 'Copy'; }, 1200);
+};
 
 document.querySelectorAll('.modal [data-close]').forEach(b => {
   b.onclick = () => b.closest('.modal').classList.remove('show');
@@ -755,81 +803,110 @@ async function loadCharacter() {
     const res = await post('loadChar', { name });
     await post('__jsLog', { step: 'loadchar-returned', ok: !!(res && res.ok), err: res && res.error });
     if (!res || res.__postError || !res.ok) { setStatus('Failed: ' + ((res && (res.error || res.__postError)) || 'unknown error')); __loading = false; setBusy(false); return; }
-    const vars = res.vars;
-    project.vars = vars;
-    project.name = name;
-    document.getElementById('charName').value = name;
-    // Fill the Names panel from the character data (original FlashBox parity).
-    project.nameText = name;
-    document.getElementById('nameText').value = name;
-    project.nameFields = {
-      weapon: vars['strWeaponName'] || '',
-      armor: vars['strArmorName'] || vars['strClassName'] || '',
-      helm: vars['strHelmName'] || '',
-      cape: vars['strCapeName'] || '',
-      pet: vars['strPetName'] || '',
-      misc: vars['strMiscName'] || ''
-    };
-    Object.keys(nameMethods).forEach(k => { document.getElementById(nameInputs[k]).value = project.nameFields[k]; });
-    project.gear = {
-      Weapon: vars['strWeaponName'] || '',
-      Armor: vars['strArmorName'] || vars['strClassName'] || '',
-      Helm: vars['strHelmName'] || '',
-      Cape: vars['strCapeName'] || '',
-      Pet: vars['strPetName'] || '',
-      Misc: vars['strMiscName'] || ''
-    };
-    project.gearCos = {
-      Weapon: vars['strCustWeaponName'] || '',
-      Armor: vars['strCustArmorName'] || '',
-      Helm: vars['strCustHelmName'] || '',
-      Cape: vars['strCustCapeName'] || ''
-    };
-    // Fresh character starts on the equipped outfit: reset the cosmetics
-    // toggle BEFORE the first render, otherwise a stale cosmeticsOn from the
-    // previous character renders the new (still empty) cosmetic set, posts
-    // an empty row list, and the overlay hides itself with no re-render.
-    project.slots = {};
-    project.cosmetics = {};
-    project.cosmeticsOn = false;
-    renderGear();
-    monitorEl.textContent = formatVars(vars);
-    setStatus('Downloading item SWFs to ' + dir + '...');
-    const dl = await post('downloadAll', { vars, dir });
-    if (!dl || !dl.items) { setStatus('Failed: ' + ((dl && dl.__postError) || 'no download reply')); __loading = false; setBusy(false); return; }
-    const pbar = document.getElementById('pfill');
-    const ptext = document.getElementById('ptext');
-    const prog = document.getElementById('progress');
-    prog.classList.add('show');
-    progressHandler = p => {
-      const cos = p.cosmetic ? ' (cos)' : '';
-      pbar.style.width = Math.round(100 * p.index / p.total) + '%';
-      ptext.textContent = p.index + '/' + p.total + ' ' + p.type + cos + (p.ok ? ' done' : ' FAILED');
-      setStatus((p.ok ? 'Downloaded ' : 'Failed ') + p.type + cos + ' ' + p.file);
-    };
-    dl.items.forEach(it => {
-      if (!it.ok) return;
-      const entry = { file: it.file, path: it.path, enabled: true };
-      if (it.cosmetic) project.cosmetics[it.type] = entry;
-      else project.slots[it.type] = entry;
-    });
-    pbar.style.width = '100%';
-    ptext.textContent = dl.items.length + '/' + dl.items.length + ' complete';
-    setStatus('Loaded ' + name + ': ' + (Object.keys(project.slots).length + Object.keys(project.cosmetics).length) + '/' + dl.items.length + ' items downloaded.');
-    setTimeout(() => prog.classList.remove('show'), 1500);
-    monitorEl.textContent = formatVars(vars) + '\n\nDownloaded to:\n' + dl.dir + '\n'
-      + dl.items.map(it => (it.ok ? '[ok] ' : '[FAIL] ') + (it.cosmetic ? '(cos) ' : '') + it.type + '  ' + it.file + (it.ok ? '\n         -> ' + it.path : '')).join('\n');
-    updatePills();
-    renderGear(); // paths now exist: refresh dim flags + recover the list
-    await sendHost();
-    refreshSideLog();
-    reportRect();
+    await applyVars(name, res.vars, dir);
   } catch (err) {
     await post('__jsLog', { step: 'catch', err: String(err && err.message || err) });
     setStatus('Error: ' + (err && err.message || err));
   }
   __loading = false;
   setBusy(false);
+}
+
+/* Load a character from already-parsed CharPage FlashVars (also what the
+   headless tests drive with canned vars). */
+async function loadVars(name, vars) {
+  let dir = document.getElementById('folder').value.trim();
+  if (!dir) { dir = await post('getAppDir'); dir = dir ? dir + '\\swf' : dir; document.getElementById('folder').value = dir || ''; }
+  setBusy(true);
+  __loading = true;
+  try { await applyVars(name, vars, dir); }
+  finally { __loading = false; setBusy(false); }
+}
+
+/* CharPage dye colors (intColor* are decimal 0xRRGGBB). They used to be
+   ignored, so every character rendered in the panel's default dyes. */
+function colorsFromVars(vars) {
+  const keys = { c1: 'intColorHair', c2: 'intColorSkin', c3: 'intColorEye', c4: 'intColorTrim', c5: 'intColorBase', c6: 'intColorAccessory' };
+  Object.keys(keys).forEach(id => {
+    const n = parseInt(vars[keys[id]], 10);
+    if (isNaN(n) || n < 0) return;
+    project.colors[id] = '#' + (n & 0xFFFFFF).toString(16).padStart(6, '0');
+    const el = document.getElementById(id);
+    if (el) el.value = project.colors[id];
+  });
+}
+
+async function applyVars(name, vars, dir) {
+  project.vars = vars;
+  project.gender = (vars['strGender'] === 'M' || vars['strGender'] === 'F') ? vars['strGender'] : '';
+  colorsFromVars(vars);
+  project.name = name;
+  document.getElementById('charName').value = name;
+  // Fill the Names panel from the character data (original FlashBox parity).
+  project.nameText = name;
+  document.getElementById('nameText').value = name;
+  project.nameFields = {
+    weapon: vars['strWeaponName'] || '',
+    armor: vars['strArmorName'] || vars['strClassName'] || '',
+    helm: vars['strHelmName'] || '',
+    cape: vars['strCapeName'] || '',
+    pet: vars['strPetName'] || '',
+    misc: vars['strMiscName'] || ''
+  };
+  Object.keys(nameMethods).forEach(k => { document.getElementById(nameInputs[k]).value = project.nameFields[k]; });
+  project.gear = {
+    Weapon: vars['strWeaponName'] || '',
+    Armor: vars['strArmorName'] || vars['strClassName'] || '',
+    Helm: vars['strHelmName'] || '',
+    Cape: vars['strCapeName'] || '',
+    Pet: vars['strPetName'] || '',
+    Misc: vars['strMiscName'] || ''
+  };
+  project.gearCos = {
+    Weapon: vars['strCustWeaponName'] || '',
+    Armor: vars['strCustArmorName'] || '',
+    Helm: vars['strCustHelmName'] || '',
+    Cape: vars['strCustCapeName'] || ''
+  };
+  // Fresh character starts on the equipped outfit: reset the cosmetics
+  // toggle BEFORE the first render, otherwise a stale cosmeticsOn from the
+  // previous character renders the new (still empty) cosmetic set, posts
+  // an empty row list, and the overlay hides itself with no re-render.
+  project.slots = {};
+  project.cosmetics = {};
+  project.cosmeticsOn = false;
+  renderGear();
+  monitorEl.textContent = formatVars(vars);
+  setStatus('Downloading item SWFs to ' + dir + '...');
+  const dl = await post('downloadAll', { vars, dir });
+  if (!dl || !dl.items) { setStatus('Failed: ' + ((dl && dl.__postError) || 'no download reply')); return; }
+  const pbar = document.getElementById('pfill');
+  const ptext = document.getElementById('ptext');
+  const prog = document.getElementById('progress');
+  prog.classList.add('show');
+  progressHandler = p => {
+    const cos = p.cosmetic ? ' (cos)' : '';
+    pbar.style.width = Math.round(100 * p.index / p.total) + '%';
+    ptext.textContent = p.index + '/' + p.total + ' ' + p.type + cos + (p.ok ? ' done' : ' FAILED');
+    setStatus((p.ok ? 'Downloaded ' : 'Failed ') + p.type + cos + ' ' + p.file);
+  };
+  dl.items.forEach(it => {
+    if (!it.ok) return;
+    const entry = { file: it.file, path: it.path, link: it.link || '', enabled: true };
+    if (it.cosmetic) project.cosmetics[it.type] = entry;
+    else project.slots[it.type] = entry;
+  });
+  pbar.style.width = '100%';
+  ptext.textContent = dl.items.length + '/' + dl.items.length + ' complete';
+  setStatus('Loaded ' + name + ': ' + (Object.keys(project.slots).length + Object.keys(project.cosmetics).length) + '/' + dl.items.length + ' items downloaded.');
+  setTimeout(() => prog.classList.remove('show'), 1500);
+  monitorEl.textContent = formatVars(vars) + '\n\nDownloaded to:\n' + dl.dir + '\n'
+    + dl.items.map(it => (it.ok ? '[ok] ' : '[FAIL] ') + (it.cosmetic ? '(cos) ' : '') + it.type + '  ' + it.file + (it.ok ? '\n         -> ' + it.path : '')).join('\n');
+  updatePills();
+  renderGear(); // paths now exist: refresh dim flags + recover the list
+  await sendHost();
+  refreshSideLog();
+  reportRect();
 }
 
 function formatVars(vars) {
@@ -854,15 +931,25 @@ function updatePills() {
 }
 
 /* ---- emotes (labels straight from the player's timeline) ---- */
-const EMOTES = ['Idle', 'Dance', 'Dance2', 'Laugh', 'Point', 'Wave', 'Bow', 'Cheer', 'Salute', 'Salute2', 'Cry', 'Cry2', 'Sleep', 'Rest', 'Kneel', 'Punt', 'Unsheath', 'Thrash', 'Facepalm', 'Airguitar', 'Backflip', 'Headbang', 'Stepdance', 'Samba', 'Spar', 'Dazed', 'Dodge', 'Powerup', 'Jumpcheer', 'Psychic1', 'Psychic2', 'Throw', 'FireBreath', 'Swordplay', 'Feign', 'Dead', 'Stern', 'Jump', 'Attack1', 'Attack2'];
+const EMOTE_GROUPS = {
+  Emotes: ['Idle', 'Dance', 'Dance2', 'Laugh', 'Point', 'Wave', 'Bow', 'Cheer', 'Salute', 'Salute2', 'Cry', 'Cry2', 'Sleep', 'Rest', 'Kneel', 'Punt', 'Unsheath', 'Thrash', 'Facepalm', 'Airguitar', 'Backflip', 'Headbang', 'Stepdance', 'Samba', 'Spar', 'Dazed', 'Dodge', 'Powerup', 'Jumpcheer', 'Psychic1', 'Psychic2', 'Throw', 'FireBreath', 'Swordplay', 'Feign', 'Dead', 'Stern', 'Jump', 'Use', 'Danceweapon', 'Useweapon', 'Card'],
+  Combat: ['Attack1', 'Attack2', 'Attack3', 'Attack4', 'UnarmedAttack1', 'UnarmedAttack2', 'UnarmedAttack3', 'KickAttack', 'FlipAttack', 'PolearmAttack1', 'PolearmAttack2', 'RangedAttack1', 'RangedAttack2', 'RangedAttack3', 'WhipAttack', 'GunAttack', 'GunAttack2', 'RifleAttack', 'RifleAttack2', 'Cast1', 'Cast2', 'Cast3', 'Hit', 'Knockout', 'ShieldBlock']
+};
 (function buildEmotes() {
   const grid = document.getElementById('emoteGrid');
-  EMOTES.forEach(n => {
-    const b = document.createElement('div');
-    b.className = 'emote-btn';
-    b.textContent = n;
-    b.onclick = () => flashCall('loadEmote', [n]);
-    grid.appendChild(b);
+  Object.keys(EMOTE_GROUPS).forEach(group => {
+    const h = document.createElement('div');
+    h.className = 'grid-head';
+    h.textContent = group;
+    grid.appendChild(h);
+    EMOTE_GROUPS[group].forEach(n => {
+      const b = document.createElement('div');
+      b.className = 'emote-btn';
+      b.textContent = n;
+      b.title = n;
+      b.onclick = () => flashCall('loadEmote', [n]);
+      grid.appendChild(b);
+    });
   });
   document.getElementById('emotePlay').onclick = () => {
     const v = document.getElementById('emoteCustom').value.trim();
@@ -877,12 +964,21 @@ document.getElementById('emoteSearch').addEventListener('input', e => {
   document.querySelectorAll('#emoteGrid .emote-btn').forEach(b => {
     b.style.display = b.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
+  document.querySelectorAll('#emoteGrid .grid-head').forEach(h => { h.style.display = q ? 'none' : ''; });
 });
 
 /* ---- tool panels (FlashCall parity with FlashBox) ---- */
 const bgColor = document.getElementById('bgColor');
+const bgColorHex = document.getElementById('bgColorHex');
 bgColor.value = project.background;
-bgColor.oninput = () => { project.background = bgColor.value; sendBackground(); };
+function setBgColor(c) {
+  bgColor.value = c;
+  bgColorHex.textContent = c.toUpperCase();
+  project.background = c;
+  sendBackground();
+}
+bgColor.oninput = () => setBgColor(bgColor.value);
+document.getElementById('bgColorReset').onclick = () => setBgColor('#2d2d30');
 
 const scaleInput = document.getElementById('scale');
 scaleInput.value = project.scale;
@@ -901,6 +997,8 @@ document.querySelectorAll('#scalePresets .preset-chip').forEach(chip => {
     scaleInput.dispatchEvent(new Event('input'));
   };
 });
+
+document.getElementById('btnFlip').onclick = () => flashCall('setFacing', ['toggle']);
 
 const nameText = document.getElementById('nameText');
 nameText.oninput = () => {
@@ -939,16 +1037,40 @@ Object.keys(colorMethods).forEach(id => {
   };
 });
 
+/* The player's hide calls take "True"/"False" (capitalized, like closeUii);
+   String(checked) sent "true"/"false", so unticking never un-hid anything. */
 function miscFlashCall(checkbox, method, key) {
   checkbox.onchange = () => {
     project[key] = checkbox.checked;
-    flashCall(method, [String(checkbox.checked)]);
+    flashCall(method, [checkbox.checked ? 'True' : 'False']);
   };
 }
 miscFlashCall(document.getElementById('hideHelm'), 'hideHelm', 'hideHelm');
 miscFlashCall(document.getElementById('hideCape'), 'hideCape', 'hideCape');
 miscFlashCall(document.getElementById('hidePet'), 'hidePet', 'hidePet');
 miscFlashCall(document.getElementById('hideWeapon'), 'unarmed', 'hideWeapon');
+miscFlashCall(document.getElementById('hideArmor'), 'hideArmor', 'hideArmor');
+miscFlashCall(document.getElementById('hideMisc'), 'hideMisc', 'hideMisc');
+
+/* Gear-list icons over the preview toggle the same checkboxes, so both
+   always agree (C# queues the clicks; the page owns the state). */
+const GEAR_TOGGLES = { weapon: 'hideWeapon', armor: 'hideArmor', helm: 'hideHelm', cape: 'hideCape', pet: 'hidePet', misc: 'hideMisc' };
+setInterval(async () => {
+  try {
+    const clicks = JSON.parse(await post('gearClicks') || '[]');
+    clicks.forEach(icon => { const cb = document.getElementById(GEAR_TOGGLES[icon]); if (cb) cb.click(); });
+  } catch (e) {}
+}, 250);
+
+/* Title bar: dark like the rest of the UI by default; optional classic gray.
+   Remembered per machine (localStorage can be unavailable: ignore then). */
+const grayTitle = document.getElementById('grayTitle');
+function applyTitleBar(gray) { document.body.classList.toggle('gray-titlebar', !!gray); grayTitle.checked = !!gray; }
+try { applyTitleBar(localStorage.getItem('fb.grayTitle') === '1'); } catch (e) { applyTitleBar(false); }
+grayTitle.onchange = () => {
+  applyTitleBar(grayTitle.checked);
+  try { localStorage.setItem('fb.grayTitle', grayTitle.checked ? '1' : '0'); } catch (e) {}
+};
 document.getElementById('hideUI').onchange = e => {
   project.hideUI = e.target.checked;
   updateUIVisibility();

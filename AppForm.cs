@@ -61,16 +61,44 @@ namespace FlashBoxApp
         }
         public void Background(string name) { Ui(() => _form.DoBackground(name)); }
         public void Reset() { Ui(() => _form.DoReset()); }
-        public void LoadItem(string itemType, string itemFile, string weaponType) { Ui(() => _form.DoLoadItem(itemType, itemFile, weaponType)); }
+        public void LoadItem(string itemType, string itemFile, string weaponType, string link) { Ui(() => _form.DoLoadItem(itemType, itemFile, weaponType, link)); }
         public void DropItemBytes(string itemType, string fileName, string base64) { Ui(() => _form.DoDropItem(itemType, fileName, base64)); }
 
-        public string LoadChar(string name)
+        // Network work runs as a background job the page polls for. Host
+        // object calls arrive on the UI thread, so the old blocking
+        // LoadChar/DownloadAll froze the whole window for the duration of
+        // the fetch (up to 2 x 60 s on a dead network).
+        static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Task<string>> _jobs =
+            new System.Collections.Concurrent.ConcurrentDictionary<string, Task<string>>();
+        static int _jobSeq;
+
+        static string StartJob(Func<string> work)
         {
-            // Run on the threadpool: the host-object call may be marshaled onto
-            // the UI thread, and blocking .GetResult() on an async method that
-            // captured the WinForms sync context would deadlock forever.
-            return Task.Run(() => LoadCharCore(name)).GetAwaiter().GetResult();
+            string id = "job" + System.Threading.Interlocked.Increment(ref _jobSeq);
+            _jobs[id] = Task.Run(work);
+            return id;
         }
+
+        public string BeginLoadChar(string name) { return StartJob(() => LoadCharCore(name)); }
+        public string BeginDownloadAll(string varsJson, string dir) { return StartJob(() => DownloadAllCore(varsJson, dir)); }
+
+        // "" while running; the job's JSON once done (then forgotten).
+        public string JobResult(string id)
+        {
+            Task<string> t;
+            if (id == null || !_jobs.TryGetValue(id, out t)) return JsonConvert.SerializeObject(new { ok = false, error = "unknown job" });
+            if (!t.IsCompleted) return "";
+            _jobs.TryRemove(id, out t);
+            if (t.IsFaulted) return JsonConvert.SerializeObject(new { ok = false, error = t.Exception.GetBaseException().Message });
+            return t.Result;
+        }
+
+        // Gear-list icon clicks, drained by the page so the icons and the
+        // Misc checkboxes share one hidden/shown state.
+        public string TakeGearClicks() { return _form.TakeGearClicks(); }
+
+        // Copy the whole debug log to the clipboard (Log tab button).
+        public bool CopyLog() { return Ui(() => _form.DoCopyLog()); }
 
         static string LoadCharCore(string name)
         {
@@ -98,11 +126,6 @@ namespace FlashBoxApp
             catch (Exception ex) { return JsonConvert.SerializeObject(new { ok = false, error = ex.Message }); }
         }
 
-        public string DownloadAll(string varsJson, string dir)
-        {
-            return Task.Run(() => DownloadAllCore(varsJson, dir)).GetAwaiter().GetResult();
-        }
-
         static string DownloadAllCore(string varsJson, string dir)
         {
             try
@@ -116,25 +139,29 @@ namespace FlashBoxApp
                 for (int i = 0; i < items.Count; i++)
                 {
                     var it = items[i];
-                    string dest = Path.Combine(dir, it.File);
                     // Already on disk from an earlier load: reuse it, don't
                     // re-download. Reloads become near-instant (delete the
                     // folder to force a fresh fetch).
-                    bool ok;
-                    try { ok = File.Exists(dest) && new FileInfo(dest).Length > 0; } catch { ok = false; }
-                    if (!ok) ok = Downloads.DownloadAsync(it.Url, dest).GetAwaiter().GetResult();
-                    results.Add(new JObject
-                    {
-                        { "type", it.Type },
-                        { "file", it.File },
-                        { "ok", ok },
-                        { "path", ok ? dest : "" },
-                        { "cosmetic", it.Cosmetic }
-                    });
+                    string dest = Downloads.EnsureLocalAsync(it, dir).GetAwaiter().GetResult();
+                    results.Add(ItemResult(it, dest));
                 }
                 return JsonConvert.SerializeObject(new { ok = true, items = results, dir });
             }
             catch (Exception ex) { return JsonConvert.SerializeObject(new { ok = false, error = ex.Message }); }
+        }
+
+        internal static JObject ItemResult(Downloads.ItemDownload it, string dest)
+        {
+            bool ok = dest != null;
+            return new JObject
+            {
+                { "type", it.Type },
+                { "file", it.File },
+                { "ok", ok },
+                { "path", ok ? dest : "" },
+                { "link", it.Link ?? "" },
+                { "cosmetic", it.Cosmetic }
+            };
         }
 
         public string PickFolder() { return Ui(() => _form.DoPickFolder()); }
@@ -145,11 +172,10 @@ namespace FlashBoxApp
     // AppForm: the combined one-window app. A WebView2 fills the window and
     // renders ui/index.html; FlashCore (the real Flash ActiveX) is a SIBLING
     // control positioned over the HTML preview region, so the Chromium
-    // compositor never paints over it. JS <-> C# IPC is pure message passing:
-    // JS posts {id, method, args} via window.chrome.webview.postMessage;
-    // C# replies {id, result} and pushes {ev:...} events.
-    // (IPC now goes through the FbHost COM proxy: the classic web-message
-    // channel silently fails C#->JS on some machines.)
+    // compositor never paints over it. Page -> C# calls go through the FbHost
+    // COM proxy (AddHostObjectToScript); C# -> page state is polled by the
+    // page (the web-message channel silently fails C#->JS on some machines).
+
     // OleDrop: shared COM drag-drop plumbing (IDropTarget + CF_HDROP file
     // extraction). Register on any hit-testable window handle; drops carry
     // real Explorer file paths.
@@ -816,8 +842,13 @@ namespace FlashBoxApp
     public class LoaderOverlay : Form
     {
         readonly TextBox _box;
-        bool _cue = true;
         const string CueText = "character name...";
+
+        // Native placeholder (shown even while focused): the old fake one was
+        // real text that the first focus erased, so the line came up blank.
+        const int EM_SETCUEBANNER = 0x1501;
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
 
         public event Action<string> Committed;
         public event Action Cancelled;
@@ -841,14 +872,14 @@ namespace FlashBoxApp
                 // Same as the transparency key: the edit field itself goes
                 // invisible too, leaving only the typed glyphs floating.
                 BackColor = BackColor,
-                ForeColor = Color.FromArgb(120, 130, 145),
+                ForeColor = Color.White,
                 Font = new Font("Segoe UI", 14f),
                 Location = new Point(16, 9),
-                Width = Width - 32
+                Width = Width - 32,
+                // The line is resized to fit the preview (CenterLoader).
+                Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right
             };
-            _box.Text = CueText;
-            _box.GotFocus += (o, e) => ClearCue();
-            _box.Click += (o, e) => ClearCue();
+            _box.HandleCreated += (o, e) => SendMessage(_box.Handle, EM_SETCUEBANNER, (IntPtr)1, CueText);
             _box.KeyDown += (o, e) =>
             {
                 if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; Commit(); }
@@ -869,14 +900,9 @@ namespace FlashBoxApp
             }
         }
 
-        void ClearCue()
-        {
-            if (_cue) { _cue = false; _box.Text = ""; _box.ForeColor = Color.White; }
-        }
-
         void Commit()
         {
-            string t = _cue ? "" : _box.Text.Trim();
+            string t = _box.Text.Trim();
             if (t.Length == 0) return;
             var cb = Committed;
             if (cb != null) cb(t);
@@ -888,9 +914,11 @@ namespace FlashBoxApp
             if (cb != null) cb();
         }
 
-        public void Present()
+        // Owned by the main window so it stays above it: unowned, any click
+        // on the app brought the main window forward and buried the line.
+        public void Present(Form owner)
         {
-            try { if (!Visible) Show(); } catch { try { Show(); } catch { } }
+            try { if (!Visible) Show(owner); } catch { try { Show(); } catch { } }
             Refocus(true);
         }
 
@@ -934,11 +962,16 @@ namespace FlashBoxApp
         bool _flashReady;
         bool _pageReady;
         bool _hostReadySent;
-        bool _reloading;
-        int _reloadCount;
-        DateTime _reloadWindow = DateTime.MinValue;
 
         static readonly bool AutoTest = Environment.GetCommandLineArgs().Length > 1 && Array.IndexOf(Environment.GetCommandLineArgs(), "--autotest") >= 0;
+
+        // --headless: offscreen window, no overlays, no modal dialogs; the
+        // HeadlessRunner drives the page and the player through these.
+        public static bool Headless;
+        internal FlashCore Flash { get { return _flash; } }
+        internal bool ReadyForTests { get { return _pageReady && _flashReady && _core != null; } }
+        internal Task<string> EvalAsync(string js) { return _core.ExecuteScriptAsync(js); }
+        protected override bool ShowWithoutActivation { get { return Headless; } }
 
         static readonly Color UiBg = Color.FromArgb(0x0A, 0x0C, 0x14);
 
@@ -954,6 +987,16 @@ namespace FlashBoxApp
             ClientSize = new Size(800, 450);
             MinimumSize = new Size(560, 400);
             BackColor = UiBg;
+            if (Headless)
+            {
+                // Real window (Flash and WebView2 both need one), parked past
+                // the right edge of every monitor and kept off the taskbar.
+                ShowInTaskbar = false;
+                StartPosition = FormStartPosition.Manual;
+                var vs = SystemInformation.VirtualScreen;
+                Location = new Point(vs.Right + 200, vs.Top);
+                ClientSize = new Size(1280, 760);
+            }
 
             _web = new WebView2 { Dock = DockStyle.Fill };
             Controls.Add(_web);
@@ -1007,16 +1050,21 @@ namespace FlashBoxApp
 
             try
             {
-                await _web.EnsureCoreWebView2Async(null);
+                // Keep the browser profile in %LOCALAPPDATA%: the default
+                // (next to the exe) fails to start from a read-only install
+                // folder such as Program Files.
+                string profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "FlashBox", Headless ? "WebView2-headless" : "WebView2");
+                var env = await CoreWebView2Environment.CreateAsync(null, profile);
+                await _web.EnsureCoreWebView2Async(env);
             }
             catch (Exception ex)
             {
                 Dbg("WebView2 init failed: " + ex);
-                MessageBox.Show(this,
+                Alert(
                     "FlashBox needs the WebView2 Runtime to show its control panel.\n\n" +
                     "Install it from https://developer.microsoft.com/microsoft-edge/webview2/ and relaunch FlashBox.\n\n" +
-                    "Technical detail: " + ex.Message,
-                    "FlashBox", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    "Technical detail: " + ex.Message, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -1026,7 +1074,6 @@ namespace FlashBoxApp
                 _core.Settings.IsStatusBarEnabled = false;
                 _core.Settings.IsZoomControlEnabled = false;
                 _core.Settings.AreBrowserAcceleratorKeysEnabled = false;
-                _core.WebMessageReceived += OnWebMessage;
                 _core.AddHostObjectToScript("fbhost", new FbHost(this));
                 _core.DOMContentLoaded += (o, ev) =>
                 {
@@ -1038,8 +1085,7 @@ namespace FlashBoxApp
             catch (Exception ex)
             {
                 Dbg("WebView2 setup failed: " + ex);
-                MessageBox.Show(this, "WebView2 setup failed: " + ex.Message, "FlashBox",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Alert("WebView2 setup failed: " + ex.Message, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -1064,12 +1110,48 @@ namespace FlashBoxApp
             {
                 Dbg("Flash init failed (continuing without avatar preview): " + ex);
                 _flash = null;
-                MessageBox.Show(this,
+                Alert(
                     "Flash Player ActiveX is not registered on this machine, so the avatar preview is unavailable.\n" +
-                    "The control panel still works.\n\nTechnical detail: " + ex.Message,
-                    "FlashBox", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    "The control panel still works.\n\nTechnical detail: " + ex.Message, MessageBoxIcon.Warning);
             }
 
+            // Headless runs have no screen presence: skip the floating
+            // layered windows (gear list, buttons, typing line) entirely.
+            if (!Headless) CreateOverlays();
+
+            // FlashCore.Ready usually fires inside its constructor, before
+            // the subscription above, which used to leave _flashReady false
+            // forever: no hostReady push and no startup typing line. Catch
+            // up now that the overlays exist.
+            if (_flash != null && _flash.Started) OnFlashReady();
+
+            try
+            {
+                string html = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ui", "index.html");
+                if (!File.Exists(html))
+                {
+                    Dbg("UI missing: " + html);
+                    Alert("FlashBox UI files are missing:\n" + html +
+                        "\n\nReinstall FlashBox with its ui\\ folder next to the exe.", MessageBoxIcon.Error);
+                    return;
+                }
+                _core.Navigate("file:///" + html.Replace('\\', '/'));
+            }
+            catch (Exception ex)
+            {
+                Dbg("Navigation failed: " + ex);
+                Alert("FlashBox could not open its control panel: " + ex.Message, MessageBoxIcon.Error);
+            }
+        }
+
+        void Alert(string text, MessageBoxIcon icon)
+        {
+            if (Headless) { Dbg("ALERT: " + text); return; }
+            MessageBox.Show(this, text, "FlashBox", MessageBoxButtons.OK, icon);
+        }
+
+        void CreateOverlays()
+        {
             try
             {
                 _gear = new HudOverlay();
@@ -1151,31 +1233,10 @@ namespace FlashBoxApp
                 _watchdog.Start();
             }
             catch (Exception ex) { Dbg("watchdog init EX: " + ex.Message); }
-
-            try
-            {
-                string html = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ui", "index.html");
-                if (!File.Exists(html))
-                {
-                    Dbg("UI missing: " + html);
-                    MessageBox.Show(this, "FlashBox UI files are missing:\n" + html +
-                        "\n\nReinstall FlashBox with its ui\\ folder next to the exe.",
-                        "FlashBox", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-                _core.Navigate("file:///" + html.Replace('\\', '/'));
-            }
-            catch (Exception ex)
-            {
-                Dbg("Navigation failed: " + ex);
-                MessageBox.Show(this, "FlashBox could not open its control panel: " + ex.Message,
-                    "FlashBox", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
         }
 
         void OnNavigationCompleted(object sender, CoreWebView2NavigationCompletedEventArgs e)
         {
-            _reloading = false;
             if (!e.IsSuccess) { Dbg("Navigation failed"); return; }
             if (AutoTest) _ = RunAutoTestAsync();
         }
@@ -1190,24 +1251,6 @@ namespace FlashBoxApp
                 await _core.ExecuteScriptAsync("document.getElementById('charName').value='alina';loadCharacter();");
             }
             catch (Exception ex) { Dbg("AUTOTEST EX: " + ex.Message); }
-        }
-
-        void RecoverPage()
-        {
-            try
-            {
-                if (_reloading || _core == null) return;
-                var now = DateTime.UtcNow;
-                if ((now - _reloadWindow).TotalSeconds > 30) { _reloadCount = 0; _reloadWindow = now; }
-                if (++_reloadCount > 3) { Dbg("CHANNEL UNRECOVERABLE after 3 reloads"); return; }
-                _reloading = true;
-                _hostReadySent = false;
-                _pageReady = false;
-                string src = _core.Source;
-                Dbg("IPC STUCK -> reloading page: " + src);
-                _core.Navigate(src);
-            }
-            catch (Exception ex) { Dbg("RecoverPage EX: " + ex.Message); }
         }
 
         void OnFlashReady()
@@ -1256,94 +1299,6 @@ namespace FlashBoxApp
         public static void ClearLog()
         {
             try { File.WriteAllText(DebugLog, ""); } catch { }
-        }
-
-        void OnWebMessage(object sender, CoreWebView2WebMessageReceivedEventArgs e)
-        {
-            try
-            {
-                string raw = e.TryGetWebMessageAsString();
-                if (raw == null) raw = e.WebMessageAsJson;
-                var msg = JsonConvert.DeserializeObject<JObject>(raw);
-                if (msg == null) return;
-                int id = msg.Value<int>("id");
-                string method = msg.Value<string>("method");
-                Dbg("<- " + method + " id=" + id + " args=" + (msg["args"] ?? "").ToString(Formatting.None));
-                if (method == "__jsError")
-                {
-                    Dbg("JS: " + (msg["args"] == null ? "" : msg["args"].ToString(Formatting.None)));
-                    return;
-                }
-                var args = msg["args"];
-                _ = DispatchAsync(id, method, args);
-            }
-            catch (Exception ex) { Dbg("OnWebMessage: " + ex); }
-        }
-
-        async Task<JToken> DispatchAsync(int id, string method, JToken args)
-        {
-            JToken result = null;
-            try
-            {
-                switch (method)
-                {
-                    case "minimize": WindowState = FormWindowState.Minimized; break;
-                    case "maximize": WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized; break;
-                    case "close": Close(); break;
-                    case "startDrag": StartDrag(); break;
-                    case "reportRect": PositionFlash(args); break;
-                    case "flashCall":
-                        _flash.FlashCall(args.Value<string>("method"), (args["params"] ?? new JArray()).ToObject<string[]>()); break;
-                    case "flashQuery":
-                        result = JValue.CreateString(DoFlashQuery(args.Value<string>("method"))); break;
-                    case "gear":
-                        DoGear(args.Value<string>("rows")); break;
-                    case "background":
-                        _flash.LoadBackground(args.Value<string>("name")); break;
-                    case "reset":
-                        _flash.ResetFlash(); break;
-                    case "loadItem":
-                        _flash.LoadItem(args.Value<string>("ItemType"), args.Value<string>("ItemFile"), args.Value<string>("WeaponType")); break;
-                    case "__ipcStuck":
-                        Dbg("IPC STUCK msgId=" + args.Value<int>("msgId") + " method=" + args.Value<string>("method"));
-                        RecoverPage(); break;
-                    case "loadChar":
-                        result = await LoadCharAsync(args.Value<string>("name")); break;
-                    case "downloadAll":
-                        result = await DownloadAllAsync(args, id); break;
-                    case "pickFolder":
-                        result = PickFolder(); break;
-                    case "getAppDir":
-                        result = JValue.CreateString(AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\')); break;
-                    case "getLog":
-                        result = JValue.CreateString(GetLog()); break;
-                    case "clearLog":
-                        ClearLog(); break;
-                    case "saveFile":
-                        result = SaveFile(args.Value<string>("data"), args.Value<string>("name")); break;
-                case "openFile":
-                    result = OpenFile(); break;
-            }
-            }
-            catch (Exception ex)
-            {
-                Dbg("Dispatch " + method + ": " + ex);
-                result = JValue.CreateString(ex.Message);
-            }
-            PostResult(id, result);
-            return result;
-        }
-
-        void PostResult(int id, JToken result)
-        {
-            try
-            {
-                if (_core == null) return;
-                var obj = new JObject { { "id", id }, { "result", result ?? JValue.CreateNull() } };
-                Dbg("-> result id=" + id);
-                _core.PostWebMessageAsJson(obj.ToString(Formatting.None));
-            }
-            catch (Exception ex) { Dbg("PostResult: " + ex); }
         }
 
         void PostEvent(JToken obj)
@@ -1424,12 +1379,33 @@ namespace FlashBoxApp
             if (_loader == null || IsDisposed) return;
             try
             {
-                // Upper third: clear of the avatar, clear of the corners.
-                int x = ClientSize.Width / 2 - _loader.Width / 2;
-                int y = (int)(ClientSize.Height * 0.28) - _loader.Height / 2;
-                _loader.Location = PointToScreen(new Point(x, y));
+                Rectangle preview = _flash != null && _flash.Visible ? _flash.Bounds : ClientRectangle;
+                Rectangle gear = Rectangle.Empty;
+                if (_gear != null && _gear.Visible && _gear.HasRows)
+                    gear = RectangleToClient(_gear.Bounds);
+                _loader.Bounds = RectangleToScreen(LoaderRect(preview, gear, _loader.Height));
             }
             catch { }
+        }
+
+        // Typing-line placement: centered over the preview (not the whole
+        // window, which includes the side drawer) near its top edge, where it
+        // can't cover the gear list or the avatar; narrowed to fit, and
+        // shifted right of the gear list when the two would still overlap.
+        internal static Rectangle LoaderRect(Rectangle preview, Rectangle gear, int height)
+        {
+            const int Margin = 16, MaxW = 360, MinW = 160;
+            int w = Math.Max(MinW, Math.Min(MaxW, preview.Width - 2 * Margin));
+            int x = preview.X + (preview.Width - w) / 2;
+            int y = preview.Y + Margin;
+            var r = new Rectangle(x, y, w, height);
+            if (!gear.IsEmpty && r.IntersectsWith(gear))
+            {
+                int left = gear.Right + Margin;
+                w = Math.Max(MinW, Math.Min(w, preview.Right - Margin - left));
+                r = new Rectangle(left, y, w, height);
+            }
+            return r;
         }
 
         void PresentLoader()
@@ -1437,7 +1413,7 @@ namespace FlashBoxApp
             if (_loader == null || IsDisposed) return;
             _loaderPresented = true;
             CenterLoader();
-            _loader.Present();
+            _loader.Present(this);
         }
 
         void ToggleLoader()
@@ -1570,16 +1546,6 @@ namespace FlashBoxApp
             if (_gear == null || _flash == null) return;
             JArray rows = null;
             try { rows = JArray.Parse(rowsJson ?? "[]"); } catch { }
-            string key = "";
-            if (rows != null)
-            {
-                foreach (var r in rows)
-                {
-                    var o = r as JObject;
-                    if (o != null) key += (o.Value<string>("name") ?? "") + "|";
-                }
-            }
-            if (key != _gearKey) { _gearKey = key; _hidden.Clear(); if (_flash != null) _flash.ClearHelmCache(); }
             _gear.SetRows(AppDomain.CurrentDomain.BaseDirectory, rows);
             if (!_gear.HasRows) return;
             try
@@ -1607,8 +1573,6 @@ namespace FlashBoxApp
             return rows;
         }
 
-        readonly Dictionary<string, bool> _hidden = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-        string _gearKey = "";
 
         static string HideMethodFor(string icon)
         {
@@ -1625,26 +1589,44 @@ namespace FlashBoxApp
             }
         }
 
-        void OnGearIcon(string icon)
+        // Gear icon clicks toggle the same hide state as the Misc tab's
+        // checkboxes: the page owns that state, so clicks are queued here and
+        // drained by the page (TakeGearClicks), which flips the checkbox.
+        // (They used to keep a separate C# copy, so the two drifted apart.)
+        readonly Queue<string> _gearClicks = new Queue<string>();
+
+        internal void OnGearIcon(string icon)
         {
-            if (_flash == null) return;
-            string method = HideMethodFor(icon);
-            if (method == null) return;
-            bool hidden = !_hidden.TryGetValue(icon, out hidden) || !hidden;
-            _hidden[icon] = hidden;
-            // Player convention (hideHelm etc.): visible = (arg == "False").
-            // Helm unhide goes through the reload path (backhair-safe).
-            if (icon.Equals("helm", StringComparison.OrdinalIgnoreCase) && !hidden)
+            if (HideMethodFor(icon) == null) return;
+            lock (_gearClicks) _gearClicks.Enqueue(icon.ToLowerInvariant());
+        }
+
+        public string TakeGearClicks()
+        {
+            lock (_gearClicks)
             {
-                _flash.UnhideHelm();
-                return;
+                if (_gearClicks.Count == 0) return "[]";
+                var arr = new JArray(_gearClicks.ToArray());
+                _gearClicks.Clear();
+                return arr.ToString(Formatting.None);
             }
-            _flash.FlashCall(method, new[] { hidden ? "True" : "False" });
+        }
+
+        public bool DoCopyLog()
+        {
+            string log = GetLog();
+            try
+            {
+                if (string.IsNullOrEmpty(log)) Clipboard.Clear();
+                else Clipboard.SetText(log);
+                return true;
+            }
+            catch (Exception ex) { Dbg("CopyLog EX: " + ex.Message); return false; }
         }
         public string DoFlashQuery(string method) { if (_flash == null) return ""; return _flash.QueryFlash(method); }
         public void DoBackground(string name) { if (_flash != null) _flash.LoadBackground(name); }
         public void DoReset() { if (_flash != null) _flash.ResetFlash(); }
-        public void DoLoadItem(string itemType, string itemFile, string weaponType) { if (_flash != null) _flash.LoadItem(itemType, itemFile, weaponType); }
+        public void DoLoadItem(string itemType, string itemFile, string weaponType, string link) { if (_flash != null) _flash.LoadItem(itemType, itemFile, weaponType, link); }
         public void DoDropFile(string slot, string path)
         {
             Dbg("DoDropFile/native slot=" + slot + " path=" + path);
@@ -1674,84 +1656,6 @@ namespace FlashBoxApp
         public string DoPickFolder() { return PickFolder(); }
         public string DoSaveFile(string data, string name) { return SaveFile(data, name); }
         public string DoOpenFile() { return OpenFile(); }
-
-        // ---- character fetch + parse (port of main.js fb-fetch-char) ----
-        async Task<JToken> LoadCharAsync(string name)
-        {
-            string body = null;
-            foreach (var url in new[]
-            {
-                "https://account.aq.com/CharPage?id=" + Uri.EscapeDataString(name),
-                "http://www.aq.com/character.asp?id=" + Uri.EscapeDataString(name)
-            })
-            {
-                body = await Downloads.GetAsync(url);
-                if (body != null) break;
-            }
-            if (body == null)
-                return Error("Could not reach the character page.");
-            var vars = Downloads.ParseFlashVars(body);
-            if (vars == null)
-                return Error("No FlashVars on that character page.");
-            var obj = new JObject { { "ok", true } };
-            var v = new JObject();
-            foreach (var kv in vars) v[kv.Key] = kv.Value;
-            obj["vars"] = v;
-            return obj;
-        }
-
-        // ---- download all item SWFs (port of main.js fb-download-all) ----
-        async Task<JToken> DownloadAllAsync(JToken args, int reqId)
-        {
-            string dir = args.Value<string>("dir");
-            var vars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var vo = args["vars"] as JObject;
-            if (vo != null)
-                foreach (var p in vo.Properties())
-                    vars[p.Name] = p.Value.Value<string>();
-
-            var items = Downloads.BuildDownloads(vars);
-            try { Directory.CreateDirectory(dir); } catch { }
-
-            var results = new JArray();
-            int total = items.Count;
-            for (int i = 0; i < total; i++)
-            {
-                var it = items[i];
-                string dest = Path.Combine(dir, it.File);
-                bool ok = await Downloads.DownloadAsync(it.Url, dest);
-                results.Add(new JObject
-                {
-                    { "type", it.Type },
-                    { "file", it.File },
-                    { "ok", ok },
-                    { "path", ok ? dest : "" },
-                    { "cosmetic", it.Cosmetic }
-                });
-                PostEvent(new JObject
-                {
-                    { "ev", "progress" },
-                    { "index", i + 1 },
-                    { "total", total },
-                    { "type", it.Type },
-                    { "ok", ok },
-                    { "file", it.File },
-                    { "cosmetic", it.Cosmetic }
-                });
-            }
-
-            return new JObject
-            {
-                { "ok", true },
-                { "items", results },
-                { "dir", dir }
-            };
-        }
-
-        static JToken Error(string message)
-        {
-            return new JObject { { "ok", false }, { "error", message } };
-        }
 
         // ---- folder/file dialogs ----
         string PickFolder()
