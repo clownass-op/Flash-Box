@@ -28,8 +28,8 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 ::-webkit-scrollbar-thumb:hover{background:var(--accent-2);}
 
 /* ---- titlebar ---- */
-.titlebar{height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#0A0E1A,#060912);padding:0 6px 0 12px;border-bottom:1px solid var(--border-soft);-webkit-app-region:drag;position:relative;border-radius:10px 10px 0 0;}
-.titlebar::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;background:linear-gradient(90deg,transparent,var(--accent-2) 20%,var(--accent-1) 50%,var(--accent-2) 80%,transparent);opacity:.55;}
+.titlebar{height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;background:#2D2D30;padding:0 6px 0 12px;border-bottom:none;-webkit-app-region:drag;position:relative;border-radius:0;}
+.titlebar::after{display:none;}
 .brand{display:flex;align-items:center;gap:8px;}
 .brand-mark{width:20px;height:20px;border-radius:5px;flex-shrink:0;background:linear-gradient(135deg,var(--accent-1),var(--accent-3));position:relative;box-shadow:0 0 12px var(--glow);}
 .brand-mark::before{content:'';position:absolute;inset:5px;border-radius:2px;background:var(--bg);}
@@ -48,8 +48,6 @@ body.maximized #bMax .ic-restore{display:inline;}
 .win-btn.close:hover{background:var(--accent-2);color:#fff;}
 .win-btn svg{width:10px;height:10px;flex-shrink:0;}
 
-/* ---- folder strip (lives at the top of the drawer now) ---- */
-.folderset{padding:10px 12px 4px;flex-shrink:0;}
 .lb-field{display:flex;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:7px;overflow:hidden;}
 .lb-field .brk{font-family:Consolas,monospace;font-size:11px;color:var(--accent-2);padding:0 8px;letter-spacing:.5px;}
 .lb-field input[type=text]{background:transparent;border:none;color:var(--text);font-family:Consolas,monospace;font-size:12px;height:32px;outline:none;padding-right:10px;}
@@ -68,42 +66,36 @@ body.maximized #bMax .ic-restore{display:inline;}
 .pbar .fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent-1),var(--accent-3));transition:width .2s;}
 .progress .ptext{font-size:10.5px;color:var(--text-faint);font-family:Consolas,monospace;white-space:nowrap;}
 
-/* ---- body split: icon rail + drawer + stage ---- */
+/* ---- body split: text rail + flyout drawer + stage ---- */
 .main{flex:1;display:flex;min-height:0;}
-.side{display:flex;flex-shrink:0;border-right:1px solid var(--border-soft);background:var(--panel);}
 
-.rail{width:70px;flex-shrink:0;background:var(--rail);border-right:1px solid var(--border-soft);display:flex;flex-direction:column;padding:8px 0;overflow-y:auto;}
-.side .tab{display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 4px;cursor:pointer;color:var(--text-faint);position:relative;font-size:9.5px;letter-spacing:.3px;text-align:center;border-bottom:none;}
-.side .tab svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.4;}
-.side .tab:hover{color:var(--text);}
-.side .tab.active{color:var(--accent-1);}
-.side .tab.active::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:2px;background:var(--accent-2);box-shadow:0 0 8px var(--glow);}
+.siderail{width:46px;max-width:46px;flex-shrink:0;background:var(--rail);border-right:none;display:flex;flex-direction:column;padding:10px 0;gap:2px;overflow-y:auto;overflow-x:hidden;transition:max-width .25s ease,opacity .2s ease;}
+.rtab{writing-mode:vertical-rl;transform:rotate(180deg);padding:11px 0;cursor:pointer;color:var(--text-faint);position:relative;font-size:11px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;text-align:center;user-select:none;white-space:nowrap;}
+.rtab:hover{color:var(--text);}
+.rtab.active{color:var(--accent-1);}
+.rtab.active::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:2px;background:var(--accent-2);box-shadow:0 0 8px var(--glow);}
 
-.drawer{width:220px;flex-shrink:0;padding:14px;overflow-y:auto;}
-.side .panel{display:none;}
-.side .panel.active{display:block;}
-.side .panel .dtitle{font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--text-faint);font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:7px;}
-.side .panel .dtitle::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--accent-2);box-shadow:0 0 5px var(--glow);}
-.side .panel label{display:block;font-size:10px;color:var(--text-faint);letter-spacing:1px;text-transform:uppercase;margin:12px 0 5px;}
-.side .panel label:first-of-type{margin-top:0;}
-.side .panel input[type=color]{width:100%;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--panel-2);cursor:pointer;}
-.side .panel input[type=range]{width:100%;accent-color:var(--accent-1);}
-.side .panel input[type=text],.side .panel textarea{width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:7px 9px;font-size:12px;outline:none;font-family:Consolas,monospace;border-radius:6px;}
-.side .panel input[type=text]:focus,.side .panel textarea:focus{border-color:var(--accent-2);}
-.side .panel .row{margin-bottom:8px;font-size:12px;display:flex;align-items:center;gap:8px;}
-.side .panel .row .k{color:var(--text-dim);}
-.side .panel .row input[type=color]{width:44px;height:22px;flex-shrink:0;}
+.drawer{flex-shrink:0;min-width:0;max-width:300px;overflow:hidden;background:var(--panel);border-right:1px solid var(--border-soft);transition:max-width .25s ease,opacity .2s ease;}
+.drawer-inner{width:300px;height:100%;padding:14px;overflow-y:auto;box-sizing:border-box;}
+.drawer .panel{display:none;}
+.drawer .panel.active{display:block;}
+.drawer .panel .dtitle{font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--text-faint);font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:7px;}
+.drawer .panel .dtitle::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--accent-2);box-shadow:0 0 5px var(--glow);}
+.drawer .panel label{display:block;font-size:10px;color:var(--text-faint);letter-spacing:1px;text-transform:uppercase;margin:12px 0 5px;}
+.drawer .panel label:first-of-type{margin-top:0;}
+.drawer .panel input[type=color]{width:100%;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--panel-2);cursor:pointer;}
+.drawer .panel input[type=range]{width:100%;accent-color:var(--accent-1);}
+.drawer .panel input[type=text],.drawer .panel textarea{width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:7px 9px;font-size:12px;outline:none;font-family:Consolas,monospace;border-radius:6px;box-sizing:border-box;}
+.drawer .panel input[type=text]:focus,.drawer .panel textarea:focus{border-color:var(--accent-2);}
+.drawer .panel .row{margin-bottom:8px;font-size:12px;display:flex;align-items:center;gap:8px;}
+.drawer .panel .row .k{color:var(--text-dim);}
+.drawer .panel .row input[type=color]{width:44px;height:22px;flex-shrink:0;}
 .monitor{font-size:11px;color:var(--text-faint);line-height:1.6;font-family:Consolas,monospace;white-space:pre-wrap;overflow-y:auto;}
 
-.stage-wrap{flex:1;display:flex;flex-direction:column;min-width:0;padding:14px 16px 0;gap:10px;min-height:0;}
-.stage{flex:1;position:relative;border:1px solid var(--border-soft);background:var(--panel-2);min-height:0;overflow:hidden;border-radius:10px;}
-.stage .corner{position:absolute;width:12px;height:12px;border-color:var(--accent-2);z-index:2;pointer-events:none;}
-.stage .corner.tl{top:6px;left:6px;border-top:1px solid;border-left:1px solid;}
-.stage .corner.tr{top:6px;right:6px;border-top:1px solid;border-right:1px solid;}
-.stage .corner.bl{bottom:6px;left:6px;border-bottom:1px solid;border-left:1px solid;}
-.stage .corner.br{bottom:6px;right:6px;border-bottom:1px solid;border-right:1px solid;}
+.stage-wrap{flex:1;display:flex;flex-direction:column;min-width:0;padding:0;gap:0;min-height:0;}
+.stage{flex:1;position:relative;border:none;background:#2D2D30;min-height:0;overflow:hidden;border-radius:0;}
 .preview-wrap{position:absolute;inset:0;}
-#previewBox{position:absolute;margin:auto;inset:0;aspect-ratio:16/9;max-width:100%;max-height:100%;}
+#previewBox{position:absolute;inset:0;width:100%;height:100%;background:#2D2D30;}
 #hostHint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text-faint);font-size:12px;letter-spacing:1px;text-align:center;pointer-events:none;font-family:Consolas,monospace;}
 
 .slots{flex-shrink:0;display:flex;align-items:center;gap:6px;padding:6px 0 8px;flex-wrap:wrap;}
@@ -118,9 +110,12 @@ body.maximized #bMax .ic-restore{display:inline;}
 /* ---- status bar ---- */
 /* statusbar removed for a bigger preview (element stays hidden: setStatus writes to it) */
 .statusbar{display:none;}
-/* viewer-first: drawer hidden until the settings button toggles it */
-.nopanel .side{display:none;}
+/* viewer-first: drawer hidden until a rail tab (or settings) opens it */
+.nopanel .drawer{max-width:0;opacity:0;border-right-color:transparent;}
 .nopanel .main{gap:0;}
+/* settings button smoothly slides the whole left menu away for a fullscreen preview */
+.nomenu .siderail{max-width:0;opacity:0;}
+.nomenu .drawer{max-width:0 !important;opacity:0;border-right-color:transparent;}
 
 /* ---- modal ---- */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:20;}
@@ -165,23 +160,18 @@ body.maximized #bMax .ic-restore{display:inline;}
 </div>
 
 <div class="main">
-  <div class="side">
-    <div class="folderset">
-      <div class="lb-field folder"><span class="brk">DIR</span><input type="text" id="folder" placeholder="Output folder for SWFs"></div>
-      <button class="action-btn" id="btnBrowse" style="width:100%;margin-top:6px;">Browse</button>
-    </div>
-    <div class="rail">
-      <div class="tab active" data-t="monitor"><svg viewBox="0 0 20 20"><path d="M3 15V9M9 15V4M15 15v-7"/></svg>Monitor</div>
-      <div class="tab" data-t="backgrounds"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="1"/><circle cx="7" cy="8" r="1.4"/><path d="M4 15l4.5-4.5L11 13l3-3 2 2"/></svg>BG</div>
-      <div class="tab" data-t="emotes"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><circle cx="7.5" cy="8.5" r="0.8" fill="currentColor" stroke="none"/><circle cx="12.5" cy="8.5" r="0.8" fill="currentColor" stroke="none"/><path d="M7 12.5c1 1.2 5 1.2 6 0"/></svg>Emotes</div>
-      <div class="tab" data-t="names"><svg viewBox="0 0 20 20"><path d="M11 3h6v6l-9 9-6-6 9-9z"/><circle cx="14" cy="6" r="1"/></svg>Names</div>
-      <div class="tab" data-t="colors"><svg viewBox="0 0 20 20"><path d="M10 3a7 7 0 1 0 0 14c1.2 0 1.6-.7 1.1-1.6-.4-.7 0-1.4.9-1.4H13a4 4 0 0 0 4-4c0-3.9-3.1-7-7-7z"/><circle cx="7" cy="9" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="13" cy="9" r="1" fill="currentColor" stroke="none"/></svg>Colors</div>
-      <div class="tab" data-t="sizes"><svg viewBox="0 0 20 20"><path d="M3 3l6 6M3 3v4M3 3h4"/><path d="M17 17l-6-6M17 17v-4M17 17h-4"/></svg>Sizes</div>
-      <div class="tab" data-t="misc"><svg viewBox="0 0 20 20"><line x1="4" y1="5" x2="16" y2="5"/><line x1="4" y1="10" x2="16" y2="10"/><line x1="4" y1="15" x2="16" y2="15"/><circle cx="7" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="13" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.5" fill="currentColor" stroke="none"/></svg>Misc</div>
-      <div class="tab" data-t="log"><svg viewBox="0 0 20 20"><path d="M4 4h12v12H4z"/><line x1="7" y1="8" x2="13" y2="8"/><line x1="7" y1="11" x2="13" y2="11"/><line x1="7" y1="14" x2="10" y2="14"/></svg>Log</div>
-    </div>
+  <div class="siderail">
+    <div class="rtab active" data-t="monitor">Monitor</div>
+    <div class="rtab" data-t="backgrounds">Background</div>
+    <div class="rtab" data-t="emotes">Emotes</div>
+    <div class="rtab" data-t="names">Names</div>
+    <div class="rtab" data-t="colors">Colors</div>
+    <div class="rtab" data-t="sizes">Sizes</div>
+    <div class="rtab" data-t="misc">Misc</div>
+    <div class="rtab" data-t="log">Log</div>
+  </div>
 
-    <div class="drawer">
+  <div class="drawer"><div class="drawer-inner">
       <div class="panel active" id="p-monitor">
         <div class="dtitle">Monitor</div>
         <div class="monitor" id="monitor">No character loaded yet.</div>
@@ -191,7 +181,7 @@ body.maximized #bMax .ic-restore{display:inline;}
         <label>Scene (from flash folder)</label>
         <div class="bg-grid" id="bgGrid"></div>
         <label>Background color</label>
-        <input type="color" id="bgColor" value="#0A0C14">
+        <input type="color" id="bgColor" value="#2D2D30">
       </div>
       <div class="panel" id="p-emotes">
         <div class="dtitle">Emotes</div>
@@ -242,18 +232,19 @@ body.maximized #bMax .ic-restore{display:inline;}
         <div class="row"><input type="checkbox" id="hidePet"> <span class="k">Hide pet</span></div>
         <div class="row"><input type="checkbox" id="hideWeapon"> <span class="k">Hide weapon</span></div>
         <div class="row"><input type="checkbox" id="hideUI"> <span class="k">Hide interface</span></div>
+        <label>Output folder</label>
+        <div class="lb-field folder"><span class="brk">DIR</span><input type="text" id="folder" placeholder="Output folder for SWFs"></div>
+        <button class="action-btn" id="btnBrowse" style="width:100%;margin-top:6px;">Browse</button>
       </div>
       <div class="panel" id="p-log">
         <div class="dtitle">Log</div>
         <button class="action-btn" id="btnClearSideLog" style="width:100%;margin-bottom:8px;">Clear log</button>
         <div class="monitor" id="sideLogView" style="height:300px;">(empty)</div>
       </div>
-    </div>
-  </div>
+  </div></div>
 
   <div class="stage-wrap">
     <div class="stage">
-      <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
       <div class="preview-wrap">
         <div id="previewBox"></div>
         <div id="hostHint">Loading Flash renderer&hellip;</div>
@@ -349,7 +340,7 @@ function setStatus(m) { statusEl.textContent = m; }
 /* ---- project state ---- */
 const project = {
   name: '',
-  background: '#0A0C14',
+  background: '#2D2D30',
   scale: 100,
   nameText: '',
   nameShow: true,
@@ -539,7 +530,7 @@ function updateUIVisibility() {
 function sendBackground() {
   post('background', { name: project.background });
   document.getElementById('previewBox').style.background =
-    project.background[0] === '#' ? project.background : '#0A0C14';
+    project.background[0] === '#' ? project.background : '#2D2D30';
   updateBgPicks();
 }
 
@@ -588,13 +579,20 @@ setTimeout(() => {
   reportRect();
 }, 2500);
 
-/* ---- tabs ---- */
+/* ---- tool tabs (original FlashBox pattern: click to slide in, click again to dismiss) ---- */
+let activeTab = 'monitor';
 function activateTab(name) {
-  document.querySelectorAll('.side .tab').forEach(t => t.classList.toggle('active', t.dataset.t === name));
-  document.querySelectorAll('.side .panel').forEach(p => p.classList.toggle('active', p.id === 'p-' + name));
+  if (activeTab === name && !document.body.classList.contains('nopanel')) {
+    document.body.classList.add('nopanel');
+    return;
+  }
+  activeTab = name;
+  document.body.classList.remove('nopanel');
+  document.querySelectorAll('.rtab').forEach(t => t.classList.toggle('active', t.dataset.t === name));
+  document.querySelectorAll('.drawer .panel').forEach(p => p.classList.toggle('active', p.id === 'p-' + name));
   if (name === 'log') startSideLog(); else stopSideLog();
 }
-document.querySelectorAll('.side .tab').forEach(tab => {
+document.querySelectorAll('.rtab').forEach(tab => {
   tab.onclick = () => activateTab(tab.dataset.t);
 });
 
@@ -623,7 +621,7 @@ document.getElementById('btnBrowse').onclick = async () => {
 };
 
 /* ---- drawer ---- */
-document.getElementById('bSettings').onclick = () => document.body.classList.toggle('nopanel');
+document.getElementById('bSettings').onclick = () => document.body.classList.toggle('nomenu');
 window.addEventListener('keydown', e => { if (e.key === 'Escape') document.body.classList.add('nopanel'); });
 
 /* ---- native loader line: C# collects the name, the page polls for it ---- */

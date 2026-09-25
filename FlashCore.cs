@@ -33,7 +33,7 @@ namespace FlashBoxApp
         public FlashCore(string baseDir)
         {
             _baseDir = baseDir;
-            BackColor = Color.FromArgb(0x0A, 0x0C, 0x14);
+            BackColor = Color.FromArgb(0x2D, 0x2D, 0x30);
             CreateFlash();
         }
 

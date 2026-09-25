@@ -951,8 +951,8 @@ namespace FlashBoxApp
             // so only our dark titlebar shows.
             FormBorderStyle = FormBorderStyle.Sizable;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(1000, 680);
-            MinimumSize = new Size(640, 480);
+            ClientSize = new Size(800, 450);
+            MinimumSize = new Size(560, 400);
             BackColor = UiBg;
 
             _web = new WebView2 { Dock = DockStyle.Fill };
