@@ -155,8 +155,19 @@ namespace FlashBoxApp
                     _helmLink = linkage ?? "";
                     _helmLoaded = true;
                 }
-                if (type == ItemType.Weapon && !string.IsNullOrEmpty(weaponType))
-                    Call("loadWeapon", b64, linkage ?? "", weaponType);
+                if (type == ItemType.Weapon)
+                {
+                    // Dual sets (Dagger) split across weapon/weaponOff and leave
+                    // the player in dual mode: a later single weapon would then
+                    // mirror into the off hand too. Sync daggerMode to the
+                    // incoming weapon FIRST so the load attaches correctly.
+                    bool dual = string.Equals(weaponType, "Dagger", StringComparison.OrdinalIgnoreCase);
+                    Call("daggerMode", dual ? "True" : "False");
+                    if (!string.IsNullOrEmpty(weaponType))
+                        Call("loadWeapon", b64, linkage ?? "", weaponType);
+                    else
+                        Call("loadWeapon", b64, linkage ?? "");
+                }
                 else
                     Call("load" + type.ToString(), b64, linkage ?? "");
             }
