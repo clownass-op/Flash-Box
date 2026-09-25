@@ -38,6 +38,9 @@ namespace FlashBoxApp
         public void Maximize() { Ui(() => _form.DoMaximize()); }
         public void CloseWindow() { Ui(() => _form.DoClose()); }
         public void StartDrag() { Ui(() => _form.DoStartDrag()); }
+        public void StartResize(string edge) { Ui(() => _form.DoStartResize(edge)); }
+        public bool IsMaximized() { return Ui(() => _form.IsMaximized); }
+        public void SetOverlaysHidden(bool hidden) { Ui(() => _form.DoSetOverlaysHidden(hidden)); }
         public void ReportRect(int x, int y, int w, int h) { Ui(() => _form.DoReportRect(x, y, w, h)); }
         public void FlashCall(string method, string paramsJson) { Ui(() => _form.DoFlashCall(method, paramsJson)); }
         public void Gear(string rowsJson) { Ui(() => _form.DoGear(rowsJson)); }
@@ -1214,8 +1217,11 @@ namespace FlashBoxApp
                             // Z-order insurance: if anything (Flash surface,
                             // DWM hiccup) covers the button overlays, reseat
                             // them. NOACTIVATE windows can't steal focus.
-                            try { if (_cos != null && _cos.Visible) _cos.BringToFront(); } catch { }
-                            try { if (_mag != null && _mag.Visible) _mag.BringToFront(); } catch { }
+                            // SWP_NOACTIVATE: BringToFront activated the overlay,
+                            // which closed any open page popup (the dye color
+                            // picker vanished within ~2 s, on this tick).
+                            RaiseNoActivate(_cos);
+                            RaiseNoActivate(_mag);
                             // Typing-line guard: pull focus back when it was
                             // yanked elsewhere in our own windows (Flash boot
                             // does this). Never from another app, never from
@@ -1329,7 +1335,7 @@ namespace FlashBoxApp
 
         void FollowGear()
         {
-            if (_flash == null || !_flash.Visible) return;
+            if (_flash == null || !_flash.Visible || _overlaysHidden) return;
             var b = _flash.Bounds;
             if (_gear != null)
             {
@@ -1372,6 +1378,20 @@ namespace FlashBoxApp
             }
             // Loader line stays centered while visible.
             if (_loader != null && _loader.Visible) CenterLoader();
+        }
+
+        [DllImport("user32.dll")]
+        static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+        static void RaiseNoActivate(Form f)
+        {
+            try
+            {
+                const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10, SWP_NOOWNERZORDER = 0x200;
+                if (f != null && f.Visible && f.IsHandleCreated)
+                    SetWindowPos(f.Handle, IntPtr.Zero, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+            }
+            catch { }
         }
 
         void CenterLoader()
@@ -1509,6 +1529,43 @@ namespace FlashBoxApp
         }
         public void DoClose() { Close(); }
         public void DoStartDrag() { StartDrag(); }
+
+        // Page edge handles -> native sizing loop (same trick as the titlebar
+        // drag: hand the button-down to Windows as a frame hit).
+        public void DoStartResize(string edge)
+        {
+            if (WindowState != FormWindowState.Normal) return;
+            int ht;
+            switch ((edge ?? "").ToLowerInvariant())
+            {
+                case "left": ht = 10; break;
+                case "right": ht = 11; break;
+                case "top": ht = 12; break;
+                case "topleft": ht = 13; break;
+                case "topright": ht = 14; break;
+                case "bottom": ht = 15; break;
+                case "bottomleft": ht = 16; break;
+                case "bottomright": ht = 17; break;
+                default: return;
+            }
+            ReleaseCapture();
+            SendMessage(Handle, WM_NCLBUTTONDOWN, ht, IntPtr.Zero);
+        }
+
+        public bool IsMaximized { get { return WindowState == FormWindowState.Maximized; } }
+
+        // Misc > Hide interface: the native overlays over the preview (gear
+        // list, magnifier, shirt button) - clean screenshots.
+        bool _overlaysHidden;
+        public void DoSetOverlaysHidden(bool hidden)
+        {
+            _overlaysHidden = hidden;
+            foreach (Form f in new Form[] { _gear, _cos, _mag })
+            {
+                try { if (f != null && hidden && f.Visible) f.Hide(); } catch { }
+            }
+            if (!hidden) FollowGear();
+        }
         public void DoReportRect(int x, int y, int w, int h) { PositionFlash(new JObject { { "x", x }, { "y", y }, { "w", w }, { "h", h } }); }
         // Page -> overlay: {has (character owns a cosmetic set), on}.
         public void DoCosmeticsButton(string stateJson)
@@ -1541,8 +1598,13 @@ namespace FlashBoxApp
             try { ps = JsonConvert.DeserializeObject<string[]>(paramsJson); } catch { }
             _flash.FlashCall(method, ps ?? new string[0]);
         }
+        // Last rows the page sent for the gear list (headless tests read it:
+        // there is no overlay window in headless runs).
+        internal string LastGearRows = "[]";
+
         public void DoGear(string rowsJson)
         {
+            LastGearRows = rowsJson ?? "[]";
             if (_gear == null || _flash == null) return;
             JArray rows = null;
             try { rows = JArray.Parse(rowsJson ?? "[]"); } catch { }
@@ -1707,44 +1769,44 @@ namespace FlashBoxApp
         const int HTCAPTION = 0x2;
         const int WM_NCCALCSIZE = 0x83;
         const int WM_NCHITTEST = 0x84;
-        const int WM_GETMINMAXINFO = 0x24;
 
         [StructLayout(LayoutKind.Sequential)]
-        struct MINMAXINFO
+        struct RECT { public int Left, Top, Right, Bottom; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct MONITORINFO
         {
-            public Point reserved;
-            public Size maxSize;
-            public Point maxPos;
-            public Size minTrack;
-            public Size maxTrack;
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public int dwFlags;
         }
+
+        const int MONITOR_DEFAULTTONEAREST = 2;
+        [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
+        [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO mi);
+        [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr hwnd);
 
         protected override void WndProc(ref Message m)
         {
-            // Borderless maximize must respect the taskbar: clamp to the
-            // working area of the monitor holding the window (Chrome-style).
-            if (m.Msg == WM_GETMINMAXINFO)
-            {
-                try
-                {
-                    var wa = Screen.FromHandle(Handle).WorkingArea;
-                    var mi = (MINMAXINFO)Marshal.PtrToStructure(m.LParam, typeof(MINMAXINFO));
-                    mi.maxPos = new Point(wa.Left, wa.Top);
-                    mi.maxSize = new Size(wa.Width, wa.Height);
-                    Marshal.StructureToPtr(mi, m.LParam, true);
-                }
-                catch { }
-            }
-            if (m.Msg == WM_NCHITTEST && WindowState != FormWindowState.Maximized)
-            {
-                // Real frame underneath: let the OS do edge resizing natively.
-                base.WndProc(ref m);
-                return;
-            }
             // Hide the native titlebar/borders: with a real frame kept, the
-            // OS still supplies animations, snap, shadow and edge resizing.
+            // OS still supplies animations, snap and shadow. Edge resizing
+            // comes from the page's edge handles (StartResize): the WebView2
+            // covers the whole client area, so the form never sees the mouse
+            // at its edges.
             if (m.Msg == WM_NCCALCSIZE && m.WParam != IntPtr.Zero)
             {
+                // Maximized windows are placed overhanging the monitor by
+                // the (now invisible) frame thickness; with the whole window
+                // as client area that overhang cut the UI off at every edge.
+                // Clamp the client rect to the monitor's work area instead
+                // (this also keeps the taskbar uncovered on every monitor).
+                if (IsZoomed(Handle))
+                {
+                    var mi = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+                    if (GetMonitorInfo(MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST), ref mi))
+                        Marshal.StructureToPtr(mi.rcWork, m.LParam, false);
+                }
                 m.Result = IntPtr.Zero;
                 return;
             }

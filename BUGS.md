@@ -49,6 +49,18 @@ left as-is on purpose. Section 4 is **still open**.
 | 33 | Name typing line placed over the whole window, covering the gear list (screenshot 4) | centered over the preview near its top, clear of the gear list | `loader_line_avoids_gear_list` |
 | 34 | Typing line went behind the main window on any click; its placeholder vanished on focus | owned by the main window; native placeholder | manual (window capture) |
 
+### Third pass (user-reported UI issues)
+
+| # | Bug | Fix | Test |
+|---|---|---|---|
+| 35 | Window could not be resized from its edges | page edge handles start the native resize | real-window check (every edge + corner) |
+| 36 | Maximizing cut off the UI edges | client area clamped to the monitor's work area | real-window check |
+| 37 | White square in the Monitor/Log scrollbars | styled scrollbar corner; Monitor no longer scrolls sideways | `ui_monitor_no_side_scroll` |
+| 38 | No way to remove a background scene | "Empty" chip | `ui_empty_background` |
+| 39 | Names tab ignored cosmetic names; "Show item names" duplicated the gear list with the player's own labels | names follow the active outfit and feed the gear list; toggle drives the gear list; character name becomes a tag over the avatar | `ui_names_follow_outfit`, `name_tag_over_avatar` |
+| 40 | Dye swatches pixelated; color picker closed after ~2 s | CSS circles; overlays re-stacked without activation | `ui_layout_no_clipping`, real-window check (fails on the old code) |
+| 41 | Title bar option was fixed gray | follows the chosen background color | `ui_title_bar_color_option` |
+
 ## 3. Reviewed, left as-is
 
 - **Clicking in the preview walks the avatar.** Intended.

@@ -200,6 +200,7 @@ package character5_fla
          ExternalInterface.addCallback("getAvatarState",this.pMC.getAvatarState);
          ExternalInterface.addCallback("isReady",this.isReady);
          ExternalInterface.addCallback("setFacing",this.pMC.setFacing);
+         ExternalInterface.addCallback("showUserName",this.showUserName);
          ExternalInterface.addCallback("setBackgroundColor",this.setBackgroundColor);
          ExternalInterface.addCallback("clearBackground",this.clearBackground);
       }
@@ -231,6 +232,77 @@ package character5_fla
       public function changeUserName(param1:String) : void
       {
          this.txtName.text = param1;
+         this.placeNameTag(null);
+      }
+
+      // Character name tag, drawn over the avatar's head like the game's
+      // name plate. It used to be one of closeUii's item labels, parked in
+      // the top-left corner on top of the gear list.
+      internal var nameAnchor:Point;
+
+      public function showUserName(param1:String) : void
+      {
+         var _loc2_:TextFormat = null;
+         if(this.nameAnchor == null)
+         {
+            this.nameAnchor = new Point(0,0);
+            this.measureNameAnchor();
+            _loc2_ = new TextFormat("Arial",15,16777215,true);
+            _loc2_.align = TextFormatAlign.CENTER;
+            // Device font: the stage field embeds only its original face,
+            // so Arial text rendered as nothing.
+            this.txtName.embedFonts = false;
+            this.txtName.defaultTextFormat = _loc2_;
+            this.txtName.setTextFormat(_loc2_);
+            this.txtName.autoSize = TextFieldAutoSize.CENTER;
+            this.txtName.selectable = false;
+            this.txtName.mouseEnabled = false;
+            this.txtName.filters = [new GlowFilter(0,1,4,4,4,1)];
+            addEventListener(Event.ENTER_FRAME,this.placeNameTag);
+         }
+         this.txtName.visible = AvatarMC.isTrue(param1);
+         this.placeNameTag(null);
+      }
+
+      // Just above the head as currently dressed (tall helms push it up).
+      // Only re-measured in the resting pose so emotes don't bounce it.
+      private function measureNameAnchor() : void
+      {
+         // Visible parts only: getBounds also counts the hair hidden under
+         // a helm, which floated the tag well above the head.
+         var _loc1_:Rectangle = new Rectangle();
+         var _loc2_:MovieClip = this.pMC.mcChar.head;
+         var _loc3_:int = 0;
+         var _loc4_:DisplayObject = null;
+         while(_loc3_ < _loc2_.numChildren)
+         {
+            _loc4_ = _loc2_.getChildAt(_loc3_);
+            if(_loc4_.visible)
+            {
+               _loc1_ = _loc1_.isEmpty() ? _loc4_.getBounds(this.pMC.mcChar) : _loc1_.union(_loc4_.getBounds(this.pMC.mcChar));
+            }
+            _loc3_++;
+         }
+         if(_loc1_.height > 0)
+         {
+            this.nameAnchor.y = _loc1_.top - 8;
+         }
+      }
+      
+      private function placeNameTag(param1:Event) : void
+      {
+         if(this.nameAnchor == null || !this.txtName.visible)
+         {
+            return;
+         }
+         if(this.pMC.mcChar.currentLabel == "Idle")
+         {
+            this.measureNameAnchor();
+         }
+         var _loc2_:Point = this.globalToLocal(this.pMC.mcChar.localToGlobal(this.nameAnchor));
+         this.txtName.x = Math.round(_loc2_.x - this.txtName.width / 2);
+         this.txtName.y = Math.round(_loc2_.y - this.txtName.height);
+         setChildIndex(this.txtName,numChildren - 1);
       }
       
       public function changeWeaponName(param1:String) : void
@@ -267,7 +339,6 @@ package character5_fla
          this.Cape.visible = _loc2_;
          this.Pet.visible = _loc2_;
          this.txtWeapon.visible = _loc2_;
-         this.txtName.visible = _loc2_;
          this.txtArmor.visible = _loc2_;
          this.txtHelm.visible = _loc2_;
          this.txtCape.visible = _loc2_;

@@ -203,6 +203,10 @@ namespace FlashBoxApp
                 T("ui_background_color_clears_scene", false, UiBackgroundColor),
                 T("ui_layout_no_clipping", false, UiLayout),
                 T("ui_title_bar_color_option", false, UiTitleBar),
+                T("ui_empty_background", false, UiEmptyBackground),
+                T("ui_monitor_no_side_scroll", false, UiMonitorScroll),
+                T("ui_names_follow_outfit", true, UiNamesFollowOutfit),
+                T("name_tag_over_avatar", true, NameTagOverAvatar),
                 T("ui_copy_log_button", false, UiCopyLog),
                 T("ui_gear_icons_sync_checkboxes", true, UiGearIconSync),
                 T("loader_line_avoids_gear_list", false, LoaderPlacement),
@@ -912,22 +916,142 @@ namespace FlashBoxApp
             Expect(bad.Count == 0, "dye transforms: " + string.Join("; ", bad.Distinct().Take(8)));
         }
 
+
+        Color CornerPixel()
+        {
+            using (var b = Flash.Snapshot()) return b.GetPixel(4, 4); // top-left: always background
+        }
+
         async Task UiBackgroundColor()
         {
-            await Js("project.background='Hill';sendBackground();");
+            await Js("project.bgScene='Hill';sendBackground();");
             await Task.Delay(700);
-            using (var a = Flash.Snapshot())
+            await Js("setBgColor('#ff00ff')");
+            await Task.Delay(500);
+            using (var b = Flash.Snapshot()) b.Save(Path.Combine(_snapDir, "bg_color_magenta.png"), ImageFormat.Png);
+            Color px = CornerPixel();
+            Expect(px.R > 200 && px.G < 60 && px.B > 200, "background color not applied (corner pixel " + px + ")");
+            await Js("setBgColor('#2d2d30')");
+        }
+
+        // BG tab "Empty": drops the scene, leaves the plain background color.
+        async Task UiEmptyBackground()
+        {
+            await Js("setBgColor('#2d2d30')");
+            await Js("project.bgScene='Hill';sendBackground();");
+            await Task.Delay(700);
+            Color scene = CornerPixel();
+            await Js("[...document.querySelectorAll('#bgGrid .bg-pick')].find(b => b.textContent === 'Empty').click()");
+            await Task.Delay(500);
+            Color px = CornerPixel();
+            Expect(!(scene.R == 45 && scene.G == 45 && scene.B == 48), "fixture scene did not load (corner " + scene + ")");
+            Expect(px.R == 45 && px.G == 45 && px.B == 48, "Empty should leave the default #2D2D30, corner pixel " + px);
+            bool on = JsonConvert.DeserializeObject<bool>(await Js("[...document.querySelectorAll('#bgGrid .bg-pick')].find(b => b.textContent === 'Empty').classList.contains('on')"));
+            Expect(on, "Empty chip not highlighted");
+        }
+
+        // Title bar option now follows the chosen background color.
+        async Task UiTitleBar()
+        {
+            string js = @"(() => {
+              const t = document.querySelector('.titlebar'), cb = document.getElementById('matchTitle');
+              if (cb.checked) cb.click();
+              const dark = getComputedStyle(t).backgroundColor;
+              const rail = getComputedStyle(document.querySelector('.siderail')).backgroundColor;
+              cb.click();
+              setBgColor('#3366cc');
+              const blue = getComputedStyle(t).backgroundColor, blueLight = t.classList.contains('light');
+              setBgColor('#f0f0e0');
+              const pale = getComputedStyle(t).backgroundColor, paleLight = t.classList.contains('light');
+              let stored = null; try { stored = localStorage.getItem('fb.matchTitle'); } catch (e) {}
+              cb.click();
+              setBgColor('#2d2d30');
+              return JSON.stringify({ dark, rail, blue, blueLight, pale, paleLight, stored, off: getComputedStyle(t).backgroundColor });
+            })()";
+            var r = JObject.Parse(JsonConvert.DeserializeObject<string>(await Js(js)));
+            Expect((string)r["dark"] == (string)r["rail"], "default title bar should match the UI (" + r["rail"] + "), is " + r["dark"]);
+            Expect((string)r["blue"] == "rgb(51, 102, 204)" && !(bool)r["blueLight"], "title bar should take the background color, got " + r["blue"]);
+            Expect((string)r["pale"] == "rgb(240, 240, 224)" && (bool)r["paleLight"], "pale background: color " + r["pale"] + ", dark ink " + r["paleLight"]);
+            Expect((string)r["stored"] == "1", "option not remembered (localStorage=" + r["stored"] + ")");
+            Expect((string)r["off"] == (string)r["rail"], "turning the option off should restore the dark bar, is " + r["off"]);
+        }
+
+        // No white scrollbar corner: Monitor/Log text never scrolls sideways
+        // and the corner is styled.
+        async Task UiMonitorScroll()
+        {
+            string js = @"(() => {
+              const m = document.getElementById('monitor');
+              m.textContent = Array(80).fill('[ok] (cos) Helm  items\\helms\\' + 'X'.repeat(90) + '.swf').join('\n');
+              activateTab('monitor'); if (document.body.classList.contains('nopanel')) activateTab('monitor');
+              const over = m.scrollWidth - m.clientWidth;
+              const corner = [...document.styleSheets].some(ss => { try { return [...ss.cssRules].some(r => r.selectorText && r.selectorText.indexOf('scrollbar-corner') >= 0); } catch (e) { return false; } });
+              document.body.classList.add('nopanel');
+              return JSON.stringify({ over, corner });
+            })()";
+            var r = JObject.Parse(JsonConvert.DeserializeObject<string>(await Js(js)));
+            Expect((int)r["over"] <= 0, "monitor scrolls sideways by " + r["over"] + "px (two scrollbars -> corner square)");
+            Expect((bool)r["corner"], "no ::-webkit-scrollbar-corner rule");
+        }
+
+        JArray GearRows() { return JArray.Parse(_form.LastGearRows ?? "[]"); }
+        string GearName(string icon) { var row = GearRows().FirstOrDefault(x => (string)x["icon"] == icon); return row == null ? null : (string)row["name"]; }
+
+        // Names tab: shows/edits the active outfit's names (cosmetic ones
+        // too), feeds the gear list, and "Show item names" toggles them there.
+        async Task UiNamesFollowOutfit()
+        {
+            foreach (var rel in new[] { ArmorRobeF, HairBackF, HelmBackhair, HelmPlain }) await Fixture(rel);
+            var vars = new JObject
             {
-                await Js("project.background='#FF00FF';sendBackground();");
-                await Task.Delay(500);
-                using (var b = Flash.Snapshot())
-                {
-                    b.Save(Path.Combine(_snapDir, "bg_color_magenta.png"), ImageFormat.Png);
-                    // Top-left corner is background, never avatar.
-                    Color px = b.GetPixel(4, 4);
-                    Expect(px.R > 200 && px.G < 60 && px.B > 200, "background color not applied (corner pixel " + px + ")");
-                }
-            }
+                { "strGender", "F" }, { "strHairFile", HairBackF }, { "strHairName", "Alina3" },
+                { "strClassName", "C" }, { "strClassFile", "ccsephA.swf" }, { "strClassLink", "ccsephA" }, { "strArmorName", "Base Armor" },
+                { "strHelmFile", HelmBackhair }, { "strHelmLink", "cmagicianHLocksHat" }, { "strHelmName", "Base Hat" },
+                { "strCustHelmFile", HelmPlain }, { "strCustHelmLink", "RevGenHood1" }, { "strCustHelmName", "Cosmetic Hood" },
+                { "strWeaponFile", "none" }, { "strCapeFile", "none" }, { "strPetFile", "none" }, { "strMiscFile", "none" }
+            };
+            await Js("document.getElementById('folder').value=" + JsonConvert.ToString(_opt.FixtureDir));
+            await JsAwait("loadVars('Names Test'," + vars.ToString(Formatting.None) + ")");
+            Func<string, Task<string>> field = async id => JsonConvert.DeserializeObject<string>(await Js("document.getElementById('" + id + "').value"));
+            Expect(await field("nmHelm") == "Base Hat", "equipped helm name field: " + await field("nmHelm"));
+            Expect(GearName("helm") == "Base Hat", "gear list helm: " + GearName("helm"));
+            await Js("document.getElementById('nameCos').click()");
+            await WaitUntil(() => GearName("helm") == "Cosmetic Hood", 3000);
+            Expect(await field("nmHelm") == "Cosmetic Hood", "cosmetic outfit on: Names tab should show the cosmetic helm, shows " + await field("nmHelm"));
+            Expect(GearName("helm") == "Cosmetic Hood", "gear list should show the cosmetic helm, shows " + GearName("helm"));
+            await Js("const e=document.getElementById('nmHelm'); e.value='Renamed Hood'; e.dispatchEvent(new Event('input'));");
+            await Task.Delay(100);
+            Expect(GearName("helm") == "Renamed Hood", "editing the name did not reach the gear list: " + GearName("helm"));
+            await Js("document.getElementById('showNames').click()");
+            await Task.Delay(100);
+            Expect(GearName("helm") == "" && GearRows().Count > 0, "Show item names off: gear list should keep icons without names, has '" + GearName("helm") + "'");
+            await Js("document.getElementById('showNames').click()");
+            await Task.Delay(100);
+            Expect(GearName("helm") == "Renamed Hood", "names back on: " + GearName("helm"));
+            Expect(JsonConvert.DeserializeObject<bool>(await Js("project.cosmeticsOn")), "cosmetic outfit toggle did not stick");
+            await Js("document.getElementById('nameCos').click()");
+        }
+
+        // Character name tag sits above the avatar's head.
+        async Task NameTagOverAvatar()
+        {
+            await Load("Helm", HelmPlain);
+            await LoadArmor("F", ArmorRobeF, "ccsephA");
+            Call("changeUserName", "Zee");
+            Call("showUserName", "True");
+            await Task.Delay(120);
+            var t = MustState()["nameTag"];
+            Snap("name_tag");
+            Expect((bool)t["v"], "name tag hidden");
+            Expect((double)t["bottom"] <= (double)t["headTop"] + 2, "name tag (bottom " + t["bottom"] + ") overlaps the head (top " + t["headTop"] + ")");
+            Expect((double)t["cx"] > (double)t["bodyLeft"] && (double)t["cx"] < (double)t["bodyRight"], "name tag not over the avatar: cx " + t["cx"] + " body " + t["bodyLeft"] + ".." + t["bodyRight"]);
+            Call("loadEmote", "Walk");
+            await Task.Delay(300);
+            t = MustState()["nameTag"];
+            Expect((double)t["bottom"] <= (double)t["headTop"] + 12, "name tag lost the avatar while walking");
+            Call("showUserName", "False");
+            await Task.Delay(50);
+            Expect(!(bool)MustState()["nameTag"]["v"], "showUserName(False) did not hide the tag");
         }
 
         // Panel layout regressions from user screenshots: squashed chip text,
@@ -959,23 +1083,6 @@ namespace FlashBoxApp
             Expect(res.Count == 0, "layout: " + string.Join("; ", res));
         }
 
-        async Task UiTitleBar()
-        {
-            string js = @"(() => {
-              const t = document.querySelector('.titlebar'), cb = document.getElementById('grayTitle');
-              if (cb.checked) cb.click();
-              const dark = getComputedStyle(t).backgroundColor;
-              cb.click();
-              const gray = getComputedStyle(t).backgroundColor;
-              let stored = null; try { stored = localStorage.getItem('fb.grayTitle'); } catch (e) {}
-              cb.click();
-              return JSON.stringify({ dark, gray, stored, rail: getComputedStyle(document.querySelector('.siderail')).backgroundColor });
-            })()";
-            var r = JObject.Parse(JsonConvert.DeserializeObject<string>(await Js(js)));
-            Expect((string)r["dark"] == (string)r["rail"], "title bar should match the UI (" + r["rail"] + "), is " + r["dark"]);
-            Expect((string)r["gray"] == "rgb(45, 45, 48)", "gray option gave " + r["gray"]);
-            Expect((string)r["stored"] == "1", "gray preference not remembered (localStorage=" + r["stored"] + ")");
-        }
 
         async Task UiCopyLog()
         {

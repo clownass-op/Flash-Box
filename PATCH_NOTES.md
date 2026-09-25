@@ -183,6 +183,53 @@ Headless suite: **32 passed / 0 failed** (8 new tests).
   stays above the window when you click the app, and its "character
   name..." placeholder stays visible until you type.
 
+## Third pass: window and UI
+
+Headless suite: **36 passed / 0 failed** (4 new tests). Window behavior was
+also checked in the real app with a scripted mouse, since the offscreen
+headless window can't be resized or maximized meaningfully.
+
+- **The window can be resized from every edge and corner again.** The
+  page covers the whole window, so Windows never saw the mouse at the edges.
+  Invisible edge handles in the page now start the native resize, and the
+  preview leaves a 5 px strip at the right and bottom edges while the window
+  isn't maximized (the Flash window would otherwise sit on top of the
+  handles). Verified: each edge and a corner resize by exactly the dragged
+  amount.
+- **Maximizing no longer cuts off the UI.** A frameless maximized window is
+  placed overhanging the screen by the (invisible) frame width, and the
+  old maximize override used the wrong coordinates on secondary monitors.
+  The client area is now clamped to the monitor's work area. Verified:
+  1920×1040 client on a 1920×1040 work area.
+- **The dye color picker no longer closes after about 2 seconds.** The
+  watchdog re-stacked the floating buttons with `BringToFront`, which
+  activates them and closes any open page popup. It now uses
+  `SWP_NOACTIVATE`. Verified: with the old code the picker is gone by 6 s,
+  with the fix it stays open.
+- **Dye swatches are smooth.** They're now CSS circles with the real color
+  input laid invisibly on top (the native swatch drew jagged edges).
+- **No white square in the Monitor/Log scrollbars.** The scrollbar corner
+  is styled, and the Monitor no longer scrolls sideways; it lists
+  downloaded files by their short path instead of full paths.
+- **"Empty" background:** the first chip in the BG tab removes the scene
+  and leaves the plain background color. The chosen background color is
+  remembered.
+- **Names tab:**
+  - It shows and edits the names of the active outfit, including
+    cosmetics. A new **Cosmetic outfit** switch (the same as the shirt
+    button) flips between the two sets.
+  - Edits update the gear list live.
+  - **Show item names** now shows or hides the names in the gear list
+    instead of the player's old built-in labels, which duplicated and
+    overlapped it.
+  - **Display over avatar** shows the character name as a tag above the
+    avatar's head (it used to sit in the corner on top of the gear list).
+- **Hide interface** hides the gear list, the magnifier and shirt
+  buttons, and the name tag, for clean screenshots.
+- **Title bar option:** "Title bar uses background color" (replaces "Gray
+  title bar") gives the title bar the chosen background color, switching to
+  dark buttons on pale colors.
+
 ## Tooling
 - **`FlashBox.exe --headless`** runs the real app (WebView2 page, Flash
   ActiveX and `char6.swf`) in an offscreen window with no overlays or

@@ -1292,6 +1292,17 @@ package
                "cape":root.txtCape.text,
                "pet":root.txtPet.text
             };
+            var nb:Rectangle = root.txtName.getBounds(root);
+            var hb:Rectangle = this.mcChar.head.getBounds(root);
+            var ab:Rectangle = this.mcChar.getBounds(root);
+            o.nameTag = {
+               "v":root.txtName.visible,
+               "cx":nb.x + nb.width / 2,
+               "bottom":nb.bottom,
+               "headTop":hb.top,
+               "bodyLeft":ab.left,
+               "bodyRight":ab.right
+            };
          }
          return JSON.stringify(o);
       }
