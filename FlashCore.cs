@@ -177,6 +177,9 @@ namespace FlashBoxApp
                     // the player in dual mode: a later single weapon would then
                     // mirror into the off hand too. Sync daggerMode to the
                     // incoming weapon FIRST so the load attaches correctly.
+                    // No type from the CharPage: read it from the SWF itself so a
+                    // gauntlet still goes on the hands, a split set on both.
+                    if (string.IsNullOrEmpty(weaponType)) weaponType = DetectWeaponType(bytes);
                     bool dual = string.Equals(weaponType, "Dagger", StringComparison.OrdinalIgnoreCase);
                     Call("daggerMode", dual ? "True" : "False");
                     if (!string.IsNullOrEmpty(weaponType))
@@ -198,9 +201,15 @@ namespace FlashBoxApp
             FlashCall("hideHelm", new[] { "False" });
         }
 
-        // Split items (sword+shield sets) carry the dual-wield parent check
-        // referencing "weaponOff" in their bytecode; plain weapons don't.
-        // Used to pick the CharPage-style attach path for dropped weapons.
+        // Weapon types that change WHERE the art goes (the game special-cases
+        // only these two in AvatarMC.onLoadWeaponComplete):
+        //  - Gauntlet: worn on both hands. Gauntlet art picks its fore/back-
+        //    hand look by checking whether it sits in "fronthand" or
+        //    "backhand", so those clip names appear in its bytecode.
+        //  - Dagger (dual wield / split sets): the dual-wield parent check
+        //    references "weaponOff".
+        // Used when no strWeaponType is known (dropped files, blank CharPage
+        // types); "" = ordinary one-handed placement.
         public static string DetectWeaponType(byte[] swf)
         {
             try
@@ -216,16 +225,23 @@ namespace FlashBoxApp
                         data = outMs.ToArray();
                     }
                 }
-                byte[] needle = Encoding.ASCII.GetBytes("weaponOff");
-                for (int i = 0; i + needle.Length <= data.Length; i++)
-                {
-                    int j = 0;
-                    while (j < needle.Length && data[i + j] == needle[j]) j++;
-                    if (j == needle.Length) return "Dagger";
-                }
+                if (Contains(data, "fronthand") || Contains(data, "backhand")) return "Gauntlet";
+                if (Contains(data, "weaponOff")) return "Dagger";
             }
             catch { }
             return "";
+        }
+
+        static bool Contains(byte[] data, string text)
+        {
+            byte[] needle = Encoding.ASCII.GetBytes(text);
+            for (int i = 0; i + needle.Length <= data.Length; i++)
+            {
+                int j = 0;
+                while (j < needle.Length && data[i + j] == needle[j]) j++;
+                if (j == needle.Length) return true;
+            }
+            return false;
         }
 
         // Synchronous no-arg query (used for isReady/getStatus polling).

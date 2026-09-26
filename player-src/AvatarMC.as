@@ -752,11 +752,11 @@ package
          }
          for each(_loc4_ in param2)
          {
-            while(_loc4_.numChildren > 0)
+            if(_loc4_.numChildren > 0)
             {
                _loc4_.removeChildAt(0);
             }
-            _loc4_.addChild(new _loc3_());
+            _loc4_.addChildAt(new _loc3_(),0);
          }
          return true;
       }
@@ -975,6 +975,51 @@ package
          this.startLoad("weapon",param1,this.onLoadWeaponComplete,this.weaponDomain);
       }
 
+      // Gauntlets are worn, not held: the game puts one copy of the art in
+      // each hand clip (above the hand at index 1), at 80% scale, mirrored,
+      // and leaves the weapon slot empty. The art picks its fore/back-hand
+      // look itself by checking whether it sits in "fronthand" or
+      // "backhand". Dagger (dual wield) is the only other special case.
+      public var weaponShown:Boolean = true;
+
+      public var gauntletMode:Boolean = false;
+
+      private function clearGauntlet() : void
+      {
+         var _loc1_:MovieClip = null;
+         for each(_loc1_ in [this.mcChar.fronthand,this.mcChar.backhand])
+         {
+            while(_loc1_.numChildren > 1)
+            {
+               _loc1_.removeChildAt(1);
+            }
+         }
+      }
+
+      private function addGauntlet(param1:MovieClip, param2:Class) : void
+      {
+         var _loc3_:MovieClip = new param2() as MovieClip;
+         _loc3_.scaleX = -0.8;
+         _loc3_.scaleY = 0.8;
+         _loc3_.visible = this.weaponShown;
+         param1.addChildAt(_loc3_,1);
+      }
+
+      // Hide weapon (unarmed): the held weapon, or the gauntlet pieces.
+      public function setWeaponShown(param1:Boolean) : void
+      {
+         var _loc2_:MovieClip = null;
+         this.weaponShown = param1;
+         this.mcChar.weapon.visible = param1 && !this.gauntletMode;
+         for each(_loc2_ in [this.mcChar.fronthand,this.mcChar.backhand])
+         {
+            if(_loc2_.numChildren > 1)
+            {
+               _loc2_.getChildAt(1).visible = param1;
+            }
+         }
+      }
+
       public function onLoadWeaponComplete(param1:Event) : void
       {
          var x:* = undefined;
@@ -985,6 +1030,30 @@ package
          {
             return;
          }
+         this.clearGauntlet();
+         this.gauntletMode = this.pAV.objData.strWeaponType == "Gauntlet";
+         if(this.gauntletMode)
+         {
+            AssetClass = domainClass(this.weaponDomain,this.pAV.objData.strWeaponLink);
+            if(AssetClass != null)
+            {
+               while(this.mcChar.weapon.hi.numChildren > 0)
+               {
+                  this.mcChar.weapon.hi.removeChildAt(0);
+               }
+               while(this.mcChar.weapon.numChildren > 1)
+               {
+                  this.mcChar.weapon.removeChildAt(1);
+               }
+               this.addGauntlet(this.mcChar.fronthand,AssetClass);
+               this.addGauntlet(this.mcChar.backhand,AssetClass);
+               this.mcChar.weaponOff.visible = false;
+               this.setWeaponShown(this.weaponShown);
+               return;
+            }
+            this.gauntletMode = false;
+         }
+         this.mcChar.weapon.visible = this.weaponShown;
          while(this.mcChar.weapon.hi.numChildren > 0)
          {
             this.mcChar.weapon.hi.removeChildAt(0);
@@ -1246,6 +1315,8 @@ package
          o.scaleY = c.scaleY;
          o.headOk = c.head != null && c.head.parent == c;
          o.gender = this.pAV.objData != null ? this.pAV.objData.strGender : null;
+         o.gauntlet = this.gauntletMode;
+         o.weaponShown = this.weaponShown;
          var parts:Array = ["head","chest","hip","idlefoot","frontfoot","backfoot","frontshoulder","backshoulder","fronthand","backhand","frontthigh","backthigh","frontshin","backshin","robe","backrobe","backhair","cape","weapon","weaponOff","shield"];
          var p:Object = {};
          var n:String = null;
