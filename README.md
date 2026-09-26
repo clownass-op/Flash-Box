@@ -54,14 +54,57 @@ Item SWFs download on demand next to the exe; backgrounds ship in `flash\`
 - `Downloads.cs` — CharPage fetch, FlashVars parsing, item downloads.
 - `ui/index.html` — control panel (slots, cosmetics, BG grid, emotes,
   names, colors, log/monitor).
-- `flash/char6.swf` — the avatar player, patched with RABCDAsm (native
-  ground-rune `loadMisc`, cosmetic/name support, Dagger-type weapons
-  attached CharPage-style directly to `weapon`/`weaponOff`) plus an FFDec
-  script patch: `hideHelm` unhide only re-shows the backhair clip when the
-  loaded helm actually defines a `<link>_backhair` symbol, so hiding and
-  unhiding a backhair-less helm (e.g. full-head morphs) no longer pops a
-  stale template backhair into view.
-  `flash/char6-orig.swf` is the untouched backup.
+- `flash/char6.swf` — the avatar player (native ground-rune `loadMisc`,
+  cosmetic/name support, Dagger-type weapons attached CharPage-style to
+  `weapon`/`weaponOff`, game-parity armor/hair/helm/dye logic). It is built
+  from `flash/char6-orig.swf` (the untouched backup) plus the ActionScript
+  in `player-src/`; see "Rebuilding the player" below. `PATCH_NOTES.md`
+  lists what changed; `BUGS.md` lists known open issues.
+- `Headless.cs` — `--headless` render regression suite (below).
+
+## Rebuilding the player
+
+Edit `player-src/*.as` (`AvatarMC`, `mcSkel`, `character5_fla/MainTimeline`),
+then:
+
+```bat
+python tools\build_char6.py
+```
+
+This needs Python 3 and the JPEXS FFDec CLI (`ffdec-cli.exe`, found in
+Program Files or via `FFDEC_CLI`). Starting from a copy of `char6-orig.swf`,
+the script:
+
+1. Replaces the avatar skeleton's timeline with the live game's. It reads
+   that timeline from `..\references\...\assets.swf` when present, else
+   from the cached `player-src\game-skeleton.bin`. `--old-skeleton` skips
+   this step.
+2. Strips stray `head` placements (only the old skeleton has them).
+3. Compiles the three classes.
+4. Writes `flash\char6.swf`.
+
+`player-src\mcSkel.as` is written for the game skeleton's frame numbers.
+Rebuild the app afterwards so `bin\flash\` picks up the new player.
+
+## Headless tests
+
+```bat
+bin\FlashBox.exe --headless
+```
+
+This runs the real app (WebView2 page + Flash ActiveX + `char6.swf`) in an
+offscreen window with no overlays or dialogs. It loads real item SWFs, then
+checks the rig through the player's `getAvatarState` callback: armor pieces
+per body slot, the walking front foot, dye transforms against the game's
+formula, every panel emote, hair/helm/back-hair rules, and the page's
+toggles, colors and gender handling. Results go to `bin\test-results\`
+(`report.md`, `report.json`, `snapshots\*.png`). The exit code is 0 when
+everything passes, 1 on failures, and 2 when the run could not start.
+
+Options: `--out <dir>`, `--fixtures <dir>` (item SWF cache, default
+`bin\test-fixtures`, downloaded from the game CDN on first use), `--player
+<swf>`, `--only <name,...>`, `--offline` (skips the live CharPage test;
+fixtures must already be cached) and `--timeout <sec>`.
 
 ## Notes
 

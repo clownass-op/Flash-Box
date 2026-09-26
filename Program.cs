@@ -22,8 +22,17 @@ namespace FlashBoxApp
         // the process, which looks like "double-click -> flashes -> gone".
         // Now the window stays up and the real error is shown + logged.
         [STAThread]
-        static void Main()
+        static int Main(string[] args)
         {
+            // Offscreen render regression suite: no dialogs, exit code = result.
+            if (HeadlessRunner.Requested(args))
+            {
+                AppDomain.CurrentDomain.UnhandledException += (s, e) => Log("FATAL headless: " + e.ExceptionObject);
+                Application.ThreadException += (s, e) => Log("headless UI thread: " + e.Exception);
+                Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+                return HeadlessRunner.Run(args);
+            }
+
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
                 var ex = e.ExceptionObject as Exception;
@@ -55,6 +64,7 @@ namespace FlashBoxApp
                     "\n\nDetails were written to " + LogFile,
                     "FlashBox", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+            return 0;
         }
     }
 }

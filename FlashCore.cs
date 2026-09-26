@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 using System.Xml.Linq;
@@ -30,6 +31,9 @@ namespace FlashBoxApp
 
         public event Action Ready;
 
+        // Headless test runs can point the host at a specific player build.
+        public static string PlayerOverride;
+
         public FlashCore(string baseDir)
         {
             _baseDir = baseDir;
@@ -38,6 +42,12 @@ namespace FlashBoxApp
         }
 
         bool _started;
+
+        // True once the player movie has been handed to the control. The
+        // ActiveX usually gets its handle (parking window) inside this
+        // constructor, i.e. before anyone could subscribe to Ready, so
+        // subscribers must check this after attaching.
+        public bool Started { get { return _started; } }
 
         void CreateFlash()
         {
@@ -70,7 +80,8 @@ namespace FlashBoxApp
             {
                 // char6.swf now has native loadMisc/hideMisc (ground runes).
                 // char6-orig.swf is the untouched backup.
-                string p = Path.Combine(_baseDir, "char6.swf");
+                string p = PlayerOverride;
+                if (string.IsNullOrEmpty(p)) p = Path.Combine(_baseDir, "char6.swf");
                 if (!File.Exists(p)) p = Path.Combine(_baseDir, "flash", "char6.swf");
                 if (File.Exists(p)) _char6 = File.ReadAllBytes(p);
                 Dbg("player loaded: " + (_char6 != null ? _char6.Length + " bytes from " + p : "NOT FOUND"));
@@ -116,13 +127,23 @@ namespace FlashBoxApp
         }
 
         // ---- commands driven by the UI ----
-        public void FlashCall(string method, string[] args)
+
+        // Character gender as last told to the player ("M"/"F"). Linkage
+        // parsing prefers this gender's symbols; item files never change it
+        // (the old parser flipped the character to whatever gender a hair or
+        // armor file listed first - e.g. a female character wearing a hair
+        // from the male folder turned male and lost her armor).
+        public string Gender { get; private set; } = "F";
+
+        public bool FlashCall(string method, string[] args)
         {
-            if (_flash == null) return;
-            try { Call(method, args ?? new string[0]); } catch { }
+            if (_flash == null) return false;
+            args = args ?? new string[0];
+            if (method == "setGender" && args.Length > 0 && (args[0] == "M" || args[0] == "F")) Gender = args[0];
+            try { return Call(method, args); } catch { return false; }
         }
 
-        public void LoadItem(string itemType, string itemFile, string weaponType)
+        public void LoadItem(string itemType, string itemFile, string weaponType, string link = null)
         {
             if (string.IsNullOrEmpty(itemFile) || !File.Exists(itemFile))
             {
@@ -134,27 +155,22 @@ namespace FlashBoxApp
             byte[] bytes;
             try { bytes = File.ReadAllBytes(itemFile); }
             catch (Exception ex) { Dbg("LoadItem read fail: " + ex.Message); return; }
-            LoadItemBytes(itemType, bytes, Path.GetFileName(itemFile), weaponType);
+            LoadItemBytes(itemType, bytes, Path.GetFileName(itemFile), weaponType, link);
         }
 
         // Same as LoadItem but from in-memory bytes (drag-and-drop SWFs that
-        // were never saved to disk).
-        public void LoadItemBytes(string itemType, byte[] bytes, string name, string weaponType)
+        // were never saved to disk). link: the CharPage linkage when known;
+        // used only if the SWF really exports it, else the SWF is parsed.
+        public void LoadItemBytes(string itemType, byte[] bytes, string name, string weaponType, string link = null)
         {
             if (bytes == null || bytes.Length < 4) return;
             ItemType type;
             if (!Enum.TryParse(itemType, true, out type)) { Dbg("LoadItem unknown type: " + itemType); return; }
             try
             {
-                string linkage = LinkageParser.Parse(bytes, type, this);
+                string linkage = LinkageParser.Resolve(bytes, type, Gender, link);
                 string b64 = Convert.ToBase64String(bytes);
-                Dbg("LoadItem " + itemType + " " + name + " size=" + bytes.Length + " base64=" + b64.Length + " linkage=" + (linkage ?? "NULL"));
-                if (type == ItemType.Helm)
-                {
-                    _helmB64 = b64;
-                    _helmLink = linkage ?? "";
-                    _helmLoaded = true;
-                }
+                Dbg("LoadItem " + itemType + " " + name + " size=" + bytes.Length + " base64=" + b64.Length + " linkage=" + (linkage ?? "NULL") + (string.IsNullOrEmpty(link) ? "" : " (charpage " + link + ")"));
                 if (type == ItemType.Weapon)
                 {
                     // Dual sets (Dagger) split across weapon/weaponOff and leave
@@ -174,31 +190,12 @@ namespace FlashBoxApp
             catch (Exception ex) { Dbg("LoadItem fail: " + ex.Message); }
         }
 
-        string _helmB64;
-        string _helmLink;
-        bool _helmLoaded;
-
-        public void ClearHelmCache() { _helmB64 = null; _helmLink = null; _helmLoaded = false; }
-
-        // Unhide by reloading the current helm instead of a bare
-        // hideHelm("False"): the player's unhide unconditionally re-shows
-        // the backhair clip, which pops a stale template backhair behind
-        // helms that define no "<link>_backhair" symbol (e.g. full-head
-        // morphs). Reloading re-runs the load completion logic, which only
-        // shows backhair when the symbol exists. Falls back to the plain
-        // unhide when no helm is cached for this outfit.
+        // The player now owns helm/hair/back-hair visibility (it tracks the
+        // helm's and the hair's own back-hair symbols), so unhiding is a
+        // plain call; the old reload-the-helm workaround is gone.
         public void UnhideHelm()
         {
-            if (_helmLoaded && _helmB64 != null)
-            {
-                Dbg("UnhideHelm via reload link=" + _helmLink);
-                try { Call("hideHelm", "False"); } catch { }
-                try { Call("loadHelm", _helmB64, _helmLink ?? ""); } catch { }
-            }
-            else
-            {
-                FlashCall("hideHelm", new[] { "False" });
-            }
+            FlashCall("hideHelm", new[] { "False" });
         }
 
         // Split items (sword+shield sets) carry the dual-wield parent check
@@ -235,22 +232,91 @@ namespace FlashBoxApp
         // Returns "" when the player has no such callback yet (still loading).
         public string QueryFlash(string method)
         {
-            if (_flash == null || string.IsNullOrEmpty(method)) return "";
-            try
-            {
-                string res = _flash.CallFunction(
-                    "<invoke name=\"" + method + "\" returntype=\"xml\"></invoke>");
-                var node = XElement.Parse(res).FirstNode;
-                return node != null ? System.Net.WebUtility.HtmlDecode(node.ToString()) : "";
-            }
-            catch { return ""; }
+            string val;
+            return TryCall(method, out val) ? val : "";
         }
 
+        // Invoke a player callback and report whether it completed. A false
+        // return means the callback is missing or threw inside the player
+        // (ExternalInterface surfaces both as a COMException).
+        public bool TryCall(string method, out string value, params string[] args)
+        {
+            value = "";
+            if (_flash == null || string.IsNullOrEmpty(method)) return false;
+            try
+            {
+                var node = XElement.Parse(_flash.CallFunction(BuildInvoke(method, args))).FirstNode;
+                value = node != null ? System.Net.WebUtility.HtmlDecode(node.ToString()) : "";
+                return true;
+            }
+            catch { return false; }
+        }
+
+        static string BuildInvoke(string function, string[] args)
+        {
+            var sb = new StringBuilder();
+            sb.Append("<invoke name=\"").Append(function).Append("\" returntype=\"xml\">");
+            if (args != null && args.Length != 0)
+            {
+                sb.Append("<arguments>");
+                foreach (var a in args)
+                    sb.Append("<string>").Append(System.Security.SecurityElement.Escape(a ?? "")).Append("</string>");
+                sb.Append("</arguments>");
+            }
+            sb.Append("</invoke>");
+            return sb.ToString();
+        }
+
+        // Render the current Flash frame into a bitmap (IViewObject::Draw on
+        // the OCX), so snapshots work even when the host window is offscreen.
+        [ComImport, Guid("0000010d-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IViewObject
+        {
+            [PreserveSig]
+            int Draw(uint dwDrawAspect, int lindex, IntPtr pvAspect, IntPtr ptd, IntPtr hdcTargetDev,
+                IntPtr hdcDraw, [In] ref RECTL lprcBounds, IntPtr lprcWBounds, IntPtr pfnContinue, IntPtr dwContinue);
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct RECTL { public int left, top, right, bottom; }
+
+        public Bitmap Snapshot()
+        {
+            if (_flash == null) return null;
+            int w = Math.Max(1, _flash.Width), h = Math.Max(1, _flash.Height);
+            var bmp = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                var vo = _flash.GetOcx() as IViewObject;
+                if (vo == null) return bmp;
+                IntPtr hdc = g.GetHdc();
+                try
+                {
+                    var r = new RECTL { left = 0, top = 0, right = w, bottom = h };
+                    vo.Draw(1 /* DVASPECT_CONTENT */, -1, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, hdc, ref r, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+                }
+                finally { g.ReleaseHdc(hdc); }
+            }
+            return bmp;
+        }
+
+        // A scene name from flash\*.swf, or "#RRGGBB" for a plain color (the
+        // color picker's value used to be ignored here, so picking a color
+        // kept the previous scene on screen). Anything else clears it.
         public void LoadBackground(string name)
         {
             byte[] bg;
+            name = name ?? "";
             if (_backgrounds.TryGetValue(name, out bg))
                 try { Call("loadBackground", Convert.ToBase64String(bg)); } catch { }
+            else if (name.Length == 7 && name[0] == '#')
+            {
+                int rgb;
+                if (int.TryParse(name.Substring(1), System.Globalization.NumberStyles.HexNumber, null, out rgb))
+                    Call("setBackgroundColor", rgb.ToString());
+            }
+            else
+                Call("clearBackground");
         }
 
         public void ResetFlash()
@@ -268,44 +334,45 @@ namespace FlashBoxApp
         }
 
         // ---- Flash invoke (mirrors FlashBox.Flash.Call) ----
-        void Call(string function, params string[] args)
+        bool Call(string function, params string[] args)
         {
-            var sb = new StringBuilder();
-            sb.Append("<invoke name=\"").Append(function).Append("\" returntype=\"xml\">");
-            if (args != null && args.Length != 0)
-            {
-                sb.Append("<arguments>");
-                foreach (var a in args) sb.Append("<string>").Append(a).Append("</string>");
-                sb.Append("</arguments>");
-            }
-            sb.Append("</invoke>");
+            // Arguments are XML-escaped: item/character names routinely
+            // contain '&' or apostrophes ("Shield & Blade"), and an unescaped
+            // one makes the whole invoke malformed so the call never lands.
+            string invoke = BuildInvoke(function, args);
             int n = args == null ? 0 : args.Length;
             Dbg("Call " + function + " args=" + n + (n > 0 && args[0] != null ? " firstLen=" + args[0].Length : ""));
             try
             {
-                var res = _flash.CallFunction(sb.ToString());
+                var res = _flash.CallFunction(invoke);
                 var node = XElement.Parse(res).FirstNode;
                 string val = node != null ? System.Net.WebUtility.HtmlDecode(node.ToString()) : "";
                 Dbg("Call " + function + " -> " + (val.Length > 200 ? val.Substring(0, 200) : val));
+                return true;
             }
             catch (Exception ex)
             {
                 // The player's ExternalInterface may not be up yet right after
-                // reset/LoadMovie; give it one beat and retry once.
-                if (ex.Message.Contains("E_FAIL"))
+                // reset/LoadMovie; give it one beat and retry once. E_FAIL also
+                // means "the callback threw" - then the player answers isReady
+                // and a retry would only repeat the side effects after blocking
+                // the UI thread for 150 ms.
+                string ready;
+                if (ex.Message.Contains("E_FAIL") && !(TryCall("isReady", out ready) && ready == "1"))
                 {
                     System.Threading.Thread.Sleep(150);
                     try
                     {
-                        var res = _flash.CallFunction(sb.ToString());
+                        var res = _flash.CallFunction(invoke);
                         var node = XElement.Parse(res).FirstNode;
                         string val = node != null ? System.Net.WebUtility.HtmlDecode(node.ToString()) : "";
                         Dbg("Call " + function + " (retry) -> " + (val.Length > 200 ? val.Substring(0, 200) : val));
-                        return;
+                        return true;
                     }
-                    catch (Exception ex2) { Dbg("Call " + function + " EX: " + ex2.Message); return; }
+                    catch (Exception ex2) { Dbg("Call " + function + " EX: " + ex2.Message); return false; }
                 }
                 Dbg("Call " + function + " EX: " + ex.Message);
+                return false;
             }
         }
     }
@@ -318,190 +385,101 @@ namespace FlashBoxApp
     // LinkageParser: scans SWF tags (SymbolClass tag 76) for item linkage names.
     static class LinkageParser
     {
-        public static string Parse(byte[] swf, ItemType type, FlashCore host)
+        static readonly string[] ArmorParts = { "Chest", "Hip", "FootIdle", "Foot", "Shoulder", "Hand", "Thigh", "Shin", "Head", "RobeBack", "Robe" };
+
+        // Linkage to hand the player for this item. A CharPage linkage
+        // (strXLink) wins when the SWF really exports it; otherwise the SWF's
+        // own symbols decide, preferring the character's gender. Pure: it
+        // never changes the character's gender (that comes from strGender).
+        public static string Resolve(byte[] swf, ItemType type, string gender, string link)
+        {
+            var syms = Symbols(swf);
+            string g = gender == "M" ? "M" : "F", other = g == "M" ? "F" : "M";
+            if (!string.IsNullOrEmpty(link) && Exports(syms, type, link)) return link;
+            switch (type)
+            {
+                case ItemType.Hair:
+                    return BaseWithSuffix(syms, g + "Hair") ?? BaseWithSuffix(syms, g + "HairBack")
+                        ?? BaseWithSuffix(syms, other + "Hair") ?? BaseWithSuffix(syms, other + "HairBack");
+                case ItemType.Armor:
+                    foreach (var gg in new[] { g, other })
+                        foreach (var part in ArmorParts)
+                        {
+                            string b = BaseWithSuffix(syms, gg + part);
+                            if (b != null) return b;
+                        }
+                    return null;
+                case ItemType.Helm:
+                    // Helms with hair (e.g. cmagicianHLocksHat) export an extra
+                    // "<base>_backhair" symbol first; attaching that as the helm
+                    // puts a locks blob on the face. The player derives
+                    // base+"_backhair" itself, so take the first linkage that
+                    // is neither _fla nor *backhair/*hairback.
+                    foreach (var n in syms)
+                        if (!IsFla(n) && !n.EndsWith("backhair", StringComparison.OrdinalIgnoreCase)
+                            && !n.EndsWith("hairback", StringComparison.OrdinalIgnoreCase))
+                            return n;
+                    return syms.Find(n => !IsFla(n));
+                default:
+                    // Weapons, capes, pets, ground runes: first real symbol
+                    // (skip "<name>_fla.*" timeline classes), else the first.
+                    return syms.Find(n => !IsFla(n)) ?? (syms.Count > 0 ? syms[0] : null);
+            }
+        }
+
+        static bool IsFla(string n) { return n.Contains("_fla"); }
+
+        static bool Exports(List<string> syms, ItemType type, string link)
         {
             switch (type)
             {
-                case ItemType.Hair: return ParseHair(swf, host);
-                case ItemType.Helm: return ParseHelm(swf);
-                case ItemType.Armor: return ParseArmor(swf, host);
-                case ItemType.Misc: return ParseMisc(swf);
-                default: return ParseFirst(swf);
+                case ItemType.Hair:
+                    return syms.Exists(n => n == link + "MHair" || n == link + "FHair");
+                case ItemType.Armor:
+                    return syms.Exists(n => n.StartsWith(link, StringComparison.Ordinal)
+                        && (n.Substring(link.Length) == "MChest" || n.Substring(link.Length) == "FChest"));
+                default:
+                    return syms.Contains(link);
             }
         }
 
-        static string ParseFirst(byte[] swf)
+        static string BaseWithSuffix(List<string> syms, string suffix)
         {
+            foreach (var n in syms)
+                if (n.Length > suffix.Length && n.EndsWith(suffix, StringComparison.Ordinal))
+                    return n.Substring(0, n.Length - suffix.Length);
+            return null;
+        }
+
+        // Every exported class name, in SymbolClass order.
+        public static List<string> Symbols(byte[] swf)
+        {
+            var list = new List<string>();
             var r = Open(swf);
-            if (r == null) return null;
+            if (r == null) return list;
             try
             {
                 while (r.BaseStream.Position < r.BaseStream.Length)
                 {
                     var h = new RecordHeader(r);
-                    if (h.TagCode == 76)
-                    {
-                        r.ReadUInt16();
-                        r.ReadUInt16();
-                        return ReadString(r);
-                    }
-                    r.ReadBytes((int)h.TagLength);
-                }
-                return null;
-            }
-            finally { r.Close(); }
-        }
-
-        static string ParseHair(byte[] swf, FlashCore host)
-        {
-            var r = Open(swf);
-            if (r == null) return null;
-            try
-            {
-                while (r.BaseStream.Position < r.BaseStream.Length)
-                {
-                    var h = new RecordHeader(r);
+                    if (h.TagCode == 0) break;
+                    long end = r.BaseStream.Position + h.TagLength;
                     if (h.TagCode == 76)
                     {
                         ushort count = r.ReadUInt16();
-                        for (ushort i = 0; i < count; i++)
+                        for (int i = 0; i < count && r.BaseStream.Position < end; i++)
                         {
                             r.ReadUInt16();
                             string name = ReadString(r);
-                            if (name == null) continue;
-                            if (name.EndsWith("MHairBack") || name.EndsWith("FHairBack"))
-                            {
-                                host.FlashCall("setGender", new[] { name.EndsWith("MHairBack") ? "M" : "F" });
-                                return name.Substring(0, name.Length - 9);
-                            }
-                            if (name.EndsWith("MHair") || name.EndsWith("FHair"))
-                            {
-                                host.FlashCall("setGender", new[] { name.EndsWith("MHair") ? "M" : "F" });
-                                return name.Substring(0, name.Length - 5);
-                            }
+                            if (!string.IsNullOrEmpty(name)) list.Add(name);
                         }
                     }
-                    else
-                    {
-                        r.ReadBytes((int)h.TagLength);
-                    }
+                    r.BaseStream.Position = end;
                 }
-                return null;
             }
+            catch { }
             finally { r.Close(); }
-        }
-
-        // Helms with hair (e.g. cmagicianHLocksHat) export an extra
-        // "<base>_backhair" symbol first; attaching that as the helm puts a
-        // locks blob on the face. The CharPage player instead takes the base
-        // helm symbol and derives base+"_backhair" for the backhair clip, so
-        // prefer the first linkage that is neither _fla nor *_backhair.
-        static string ParseHelm(byte[] swf)
-        {
-            var r = Open(swf);
-            if (r == null) return null;
-            try
-            {
-                string fallback = null;
-                while (r.BaseStream.Position < r.BaseStream.Length)
-                {
-                    var h = new RecordHeader(r);
-                    if (h.TagCode == 76)
-                    {
-                        ushort count = r.ReadUInt16();
-                        for (ushort i = 0; i < count; i++)
-                        {
-                            r.ReadUInt16();
-                            string name = ReadString(r);
-                            if (name == null || name.Contains("_fla")) continue;
-                            if (fallback == null) fallback = name;
-                            if (!name.EndsWith("_backhair", StringComparison.OrdinalIgnoreCase)
-                                && !name.EndsWith("backhair", StringComparison.OrdinalIgnoreCase)
-                                && !name.EndsWith("hairback", StringComparison.OrdinalIgnoreCase))
-                                return name;
-                        }
-                    }
-                    else
-                    {
-                        r.ReadBytes((int)h.TagLength);
-                    }
-                }
-                return fallback;
-            }
-            finally { r.Close(); }
-        }
-
-        // Ground runes (items/grounds/*.swf) export the rune name plus a
-        // "<name>_fla.*" artifact (e.g. DSVGroundSymbol + DSVGroundSymbol_fla.gcc_4).
-        // Same skip-_fla rule as helms.
-        static string ParseMisc(byte[] swf)
-        {
-            var r = Open(swf);
-            if (r == null) return null;
-            try
-            {
-                while (r.BaseStream.Position < r.BaseStream.Length)
-                {
-                    var h = new RecordHeader(r);
-                    if (h.TagCode == 76)
-                    {
-                        ushort count = r.ReadUInt16();
-                        for (ushort i = 0; i < count; i++)
-                        {
-                            r.ReadUInt16();
-                            string name = ReadString(r);
-                            if (name != null && !name.Contains("_fla"))
-                                return name;
-                        }
-                    }
-                    else
-                    {
-                        r.ReadBytes((int)h.TagLength);
-                    }
-                }
-                return null;
-            }
-            finally { r.Close(); }
-        }
-
-        static string ParseArmor(byte[] swf, FlashCore host)
-        {
-            string[] suffixes = { "MShin", "FShin", "MChest", "FChest", "MHand", "FHand",
-                                  "MShoulder", "FShoulder", "MThigh", "FThigh", "MFoot", "FFoot",
-                                  "MFootIdle", "FFootIdle", "MHip", "FHip" };
-            var r = Open(swf);
-            if (r == null) return null;
-            try
-            {
-                while (r.BaseStream.Position < r.BaseStream.Length)
-                {
-                    var h = new RecordHeader(r);
-                    if (h.TagCode == 76)
-                    {
-                        ushort count = r.ReadUInt16();
-                        for (ushort i = 0; i < count; i++)
-                        {
-                            r.ReadUInt16();
-                            string name = ReadString(r);
-                            if (name == null) continue;
-                            foreach (var suf in suffixes)
-                            {
-                                if (name.EndsWith(suf))
-                                {
-                                    host.FlashCall("setGender", new[] { suf[0] == 'M' ? "M" : "F" });
-                                    return name.Substring(0, name.Length - suf.Length);
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        r.ReadBytes((int)h.TagLength);
-                    }
-                }
-                return null;
-            }
-            finally { r.Close(); }
+            return list;
         }
 
         static BinaryReader Open(byte[] swf)
@@ -553,7 +531,15 @@ namespace FlashBoxApp
             using (var ms = new MemoryStream(swf, 8, swf.Length - 8))
             using (var inf = new InflaterInputStream(ms))
             {
-                inf.Read(outBuf, 8, fileLength - 8);
+                // Stream.Read may return less than asked; a single call could
+                // leave the tail (where SymbolClass usually sits) zeroed.
+                int off = 8;
+                while (off < fileLength)
+                {
+                    int got = inf.Read(outBuf, off, fileLength - off);
+                    if (got <= 0) break;
+                    off += got;
+                }
             }
             outBuf[0] = (byte)'F';
             return outBuf;
