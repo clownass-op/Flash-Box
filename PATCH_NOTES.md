@@ -230,6 +230,62 @@ headless window can't be resized or maximized meaningfully.
   title bar") gives the title bar the chosen background color, switching to
   dark buttons on pale colors.
 
+## Animation audit
+
+The decompiled game client was checked for every animation it plays on a
+player avatar: its `combatAnims` list (World.as), the per-weapon attack and
+stance picks (AvatarMC), and its camera tool's label list. All of them exist
+in the skeleton. The only names it plays that the skeleton lacks, `Block`
+and `Fall`, are monster-only reactions; the game skips `Block` itself when
+the label is missing.
+
+The Emotes panel was hiding 17 of them. It now lists **85 animations**:
+- **Combat** adds Dagger attacks 1–2 (dual wield), Sword+Shield attacks
+  1–2, Fist-weapon attacks 1–2, GunAttack3, Stab, Castgood and Getup.
+- **Stances** is a new group: Default, Dagger, Sword+Shield, Fist,
+  Polearm, Ranged, Unarmed and Rifle combat poses, each held until the next
+  pick.
+
+Long timeline labels get short button text (for example "Dagger Atk 1"); the
+real label stays as the tooltip and still matches in search. Walk loops
+(`Walk`, `mountWalk`, `horseWalk`, `throneWalk`) aren't listed: they only
+loop while the avatar is moving and otherwise run into the next animation.
+
+Headless suite: **38 passed / 0 failed**. New tests:
+`emote_panel_has_all_combat_anims` (the panel covers the game's full combat
+list) and `dagger_attack_both_hands` (both blades shown mid-attack).
+
+## Gauntlet weapons
+
+Gauntlet-type weapons (for example **Inferna Glass**,
+`items/gauntlets/FClericGOrb.swf`; the wiki, the character page and the CDN
+folder all say Gauntlet) used to float beside the avatar in the weapon
+slot. The game wears them instead (`AvatarMC.onLoadWeaponComplete`): one
+copy goes in each hand clip above the hand art, at 80% scale and mirrored,
+and the weapon slot stays empty. The art itself picks its fore-hand or
+back-hand look by checking which clip it is in.
+
+- The player now does the same when the weapon type is `Gauntlet`.
+- Armor loads replace only the hand art, so the gauntlet survives an armor
+  or cosmetics swap.
+- **Hide weapon** hides the gauntlet pieces.
+- Switching to a held weapon clears the hands and restores the weapon
+  slot.
+- **Detection without a type** (dragged files, blank character-page
+  types): gauntlet art names the `fronthand`/`backhand` clips in its code,
+  which ordinary weapons never do, so `DetectWeaponType` returns `Gauntlet`
+  for it. It was checked against every weapon file available locally: only
+  the gauntlet was flagged. Only one gauntlet file was available to test.
+- Only Gauntlet and Dagger get special placement in the game; bows, guns,
+  rifles and whips use the normal slot and only change animations.
+- The name tag uses the character page's spelling of the name (`strName`)
+  rather than the typed one.
+- **New headless option `--char <name>`** renders any live character to
+  `snapshots\char_<name>.png` for visual checks.
+
+Headless suite: **40 passed / 0 failed** (1 skipped without `--char`). New
+tests: `gauntlet_worn_on_hands`, `gauntlet_detected_without_type`.
+
 ## Tooling
 - **`FlashBox.exe --headless`** runs the real app (WebView2 page, Flash
   ActiveX and `char6.swf`) in an offscreen window with no overlays or

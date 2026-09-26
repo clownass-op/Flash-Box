@@ -27,6 +27,8 @@ namespace FlashBoxApp
     //   --only <a,b>       run only tests whose name contains one of these
     //   --offline          skip tests that need game.aq.com
     //   --timeout <sec>    whole-run watchdog    (default 600)
+    //   --char <name>      also load this live character and save
+    //                      snapshots\char_<name>.png (test live_char_snapshot)
     static class HeadlessRunner
     {
         [DllImport("kernel32.dll")]
@@ -80,7 +82,7 @@ namespace FlashBoxApp
 
     class HeadlessOptions
     {
-        public string OutDir, FixtureDir, Player;
+        public string OutDir, FixtureDir, Player, Char;
         public string[] Only = new string[0];
         public bool Offline;
         public int TimeoutSec = 600;
@@ -104,6 +106,7 @@ namespace FlashBoxApp
                     case "--player": o.Player = next; i++; break;
                     case "--only": o.Only = (next ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries); i++; break;
                     case "--offline": o.Offline = true; break;
+                    case "--char": o.Char = next; i++; break;
                     case "--timeout": int.TryParse(next, out o.TimeoutSec); i++; break;
                 }
             }
@@ -140,6 +143,7 @@ namespace FlashBoxApp
         const string Sword = "items/swords/sword01.swf";
         const string Cape = "items/capes/PalidanRevampCape.swf";
         const string Pet = "items/pets/4up-29Aug16.swf";
+        const string Gauntlet = "items/gauntlets/FClericGOrb.swf";  // Inferna Glass (wiki: Type Gauntlet)
 
         public HeadlessSuite(AppForm form, HeadlessOptions opt) { _form = form; _opt = opt; }
 
@@ -194,6 +198,10 @@ namespace FlashBoxApp
                 T("helm_backhair_survives_late_hair", true, HelmBackhairLateHair),
                 T("resize_keeps_facing", false, ResizeKeepsFacing),
                 T("dagger_then_sword", true, DaggerThenSword),
+                T("dagger_attack_both_hands", true, DaggerAttackBothHands),
+                T("gauntlet_worn_on_hands", true, GauntletWornOnHands),
+                T("gauntlet_detected_without_type", true, GauntletDetected),
+                T("emote_panel_has_all_combat_anims", false, EmotePanelCombatAnims),
                 T("armor_back_hand_silhouette", true, BackHandSilhouette),
                 T("pet_resize_keeps_facing", true, PetResizeKeepsFacing),
                 T("closeuii_before_misc_name", false, CloseUiiBeforeMisc),
@@ -214,6 +222,7 @@ namespace FlashBoxApp
                 T("linkage_parser_prefers_gender", true, LinkagePrefersGender),
                 T("live_charpage_roundtrip", true, LiveCharPage),
                 T("live_load_keeps_ui_responsive", true, LiveLoadKeepsUiResponsive),
+                T("live_char_snapshot", true, LiveCharSnapshot),
             };
 
             var results = new JArray();
@@ -625,7 +634,8 @@ namespace FlashBoxApp
                 await Task.Delay(160);
                 var b = MustState();
                 // Advancing (or legitimately parked on a stop() frame of the same emote).
-                if ((int)b["frame"] == (int)a["frame"] && (string)b["label"] == lab && e != "Dead" && e != "Feign")
+                // Stances (…Fight) and Dead/Feign legitimately stop on their last frame.
+                if ((int)b["frame"] == (int)a["frame"] && (string)b["label"] == lab && e != "Dead" && e != "Feign" && !e.EndsWith("Fight"))
                     bad.Add(e + " frozen at " + b["frame"]);
                 if (!(bool)b["headOk"]) bad.Add(e + " lost head");
             }
@@ -815,6 +825,89 @@ namespace FlashBoxApp
             double sx1 = (double)st["pet"]["sx"];
             Expect(Math.Sign(sx1) == Math.Sign(sx0) && Math.Abs(Math.Abs(sx1) - 1.5) < 0.001,
                 "pet scaleX " + sx0 + " -> " + sx1 + " after loadResizePet(1.5); facing lost");
+        }
+
+        // Dagger (dual wield) attacks swing both blades.
+        async Task DaggerAttackBothHands()
+        {
+            await LoadArmor("F", ArmorRobeF, "ccsephA");
+            await Load("Weapon", Dagger, "Dagger");
+            await WaitState(s => Has(Kids(s, "weapon"), "mugCysero") && Has(Kids(s, "weaponOff"), "mugCysero"), "dagger in both hands");
+            Call("loadEmote", "DuelWield/DaggerAttack1");
+            await Task.Delay(250);
+            var st = MustState();
+            Snap("dagger_attack1");
+            Expect(((string)st["label"] ?? "").StartsWith("DuelWield/DaggerAttack1"), "label " + st["label"]);
+            Expect(Visible(st, "weaponOff") && Has(Kids(st, "weaponOff"), "mugCysero"), "off-hand dagger not shown during the attack");
+            await WaitState(s => (string)s["label"] == "Idle", "back to Idle after the attack", 4000);
+        }
+
+        static bool HandHas(JObject st, string hand, string cls, bool visible)
+        {
+            var k = Kids(st, hand);
+            return k.Length == 2 && k[1].StartsWith(cls) && (k[1].EndsWith("(hidden)") != visible);
+        }
+
+        // Gauntlets are worn: one copy in each hand clip above the hand art
+        // (game: AvatarMC.onLoadWeaponComplete), none in the weapon slot.
+        async Task GauntletWornOnHands()
+        {
+            await LoadArmor("F", ArmorRobeF, "ccsephA");
+            await Load("Weapon", Gauntlet, "Gauntlet");
+            var st = await WaitState(s => (bool)s["gauntlet"] && HandHas(s, "fronthand", "FClericGOrb", true), "gauntlet on the hands");
+            await Task.Delay(150);
+            st = MustState();
+            Snap("gauntlet_idle");
+            Expect(Has(Kids(st, "fronthand"), "ccsephAFHand") && Kids(st, "fronthand")[0].StartsWith("ccsephAFHand"), "armor hand must stay under the gauntlet: " + string.Join(",", Kids(st, "fronthand")));
+            Expect(HandHas(st, "backhand", "FClericGOrb", true), "back hand gauntlet: " + string.Join(",", Kids(st, "backhand")));
+            Expect(!Visible(st, "weapon"), "weapon slot should be hidden for a gauntlet");
+            Expect((double)st["parts"]["backhand"]["m0"] == 0, "back hand armor piece should stay a silhouette");
+
+            // A new armor keeps the gauntlet on.
+            await LoadArmor("F", ArmorRobeOnlyF, "BeleenSXY");
+            await Task.Delay(150);
+            st = MustState();
+            Expect(Kids(st, "fronthand")[0].StartsWith("BeleenSXYFHand") && HandHas(st, "fronthand", "FClericGOrb", true), "armor swap dropped the gauntlet: " + string.Join(",", Kids(st, "fronthand")));
+
+            // Hide weapon hides the gauntlet, and back.
+            Call("unarmed", "True");
+            await Task.Delay(60);
+            st = MustState();
+            Expect(HandHas(st, "fronthand", "FClericGOrb", false) && HandHas(st, "backhand", "FClericGOrb", false), "Hide weapon left the gauntlet visible");
+            Call("unarmed", "False");
+            await Task.Delay(60);
+            Expect(HandHas(MustState(), "fronthand", "FClericGOrb", true), "un-hiding did not bring the gauntlet back");
+
+            // Switching to a held weapon clears the hands and uses the slot.
+            await Load("Weapon", Sword, "Sword");
+            st = await WaitState(s => !(bool)s["gauntlet"] && Has(Kids(s, "weapon"), "flash.display::MovieClip") && Kids(s, "fronthand").Length == 1, "sword in the hand, gauntlet gone");
+            Expect(Visible(st, "weapon"), "weapon slot hidden after switching from a gauntlet");
+            Expect(Kids(st, "backhand").Length == 1, "gauntlet left on the back hand");
+        }
+
+        // Dropped files / blank CharPage types: the SWF itself says gauntlet.
+        async Task GauntletDetected()
+        {
+            string g = await Fixture(Gauntlet), sw = await Fixture(Sword), ax = await Fixture("items/axes/axe05.swf");
+            Expect(FlashCore.DetectWeaponType(File.ReadAllBytes(g)) == "Gauntlet", "gauntlet SWF not detected");
+            Expect(FlashCore.DetectWeaponType(File.ReadAllBytes(sw)) == "", "sword misdetected as " + FlashCore.DetectWeaponType(File.ReadAllBytes(sw)));
+            Expect(FlashCore.DetectWeaponType(File.ReadAllBytes(ax)) == "", "axe misdetected");
+            await LoadArmor("F", ArmorRobeF, "ccsephA");
+            Flash.LoadItem("Weapon", g, null);
+            var st = await WaitState(s => (bool)s["gauntlet"], "gauntlet placed without a weapon type");
+            Expect(HandHas(st, "fronthand", "FClericGOrb", true), "hands: " + string.Join(",", Kids(st, "fronthand")));
+        }
+
+        // Every animation the game treats as combat (World.as combatAnims in
+        // the decompiled client, minus the sub-part GunAttack3End... which it
+        // does not list) must be offered in the Emotes panel.
+        static readonly string[] GameCombatAnims = { "Attack1", "Attack2", "Attack3", "Attack4", "Hit", "Knockout", "Getup", "Stab", "Thrash", "Castgood", "Cast1", "Cast2", "Cast3", "Sword/ShieldFight", "Sword/ShieldAttack1", "Sword/ShieldAttack2", "ShieldBlock", "DuelWield/DaggerFight", "DuelWield/DaggerAttack1", "DuelWield/DaggerAttack2", "FistweaponFight", "FistweaponAttack1", "FistweaponAttack2", "PolearmFight", "PolearmAttack1", "PolearmAttack2", "RangedFight", "RangedAttack1", "RangedAttack2", "RangedAttack3", "UnarmedFight", "UnarmedAttack1", "UnarmedAttack2", "UnarmedAttack3", "KickAttack", "FlipAttack", "Dodge", "WhipAttack", "GunAttack", "GunAttack2", "GunAttack3", "RifleAttack", "RifleAttack2", "RifleFight", "Card" };
+
+        async Task EmotePanelCombatAnims()
+        {
+            var page = JArray.Parse(JsonConvert.DeserializeObject<string>(await Js("JSON.stringify(Object.values(EMOTE_GROUPS).flat())"))).Select(x => (string)x).ToList();
+            var missing = GameCombatAnims.Where(a => !page.Contains(a)).ToList();
+            Expect(missing.Count == 0, "Emotes panel lacks: " + string.Join(", ", missing));
         }
 
         async Task CloseUiiBeforeMisc()
@@ -1132,6 +1225,20 @@ namespace FlashBoxApp
 
         // Character fetch/downloads used to block the UI thread for their
         // whole duration; a UI timer must keep ticking during a live load.
+        // --char <name>: render any live character (manual visual checks).
+        async Task LiveCharSnapshot()
+        {
+            if (string.IsNullOrEmpty(_opt.Char)) throw new FixtureUnavailable("no --char given");
+            await Js("document.getElementById('folder').value=" + JsonConvert.ToString(Path.Combine(_opt.FixtureDir, "live")));
+            await Js("document.getElementById('charName').value=" + JsonConvert.ToString(_opt.Char));
+            await JsAwait("loadCharacter()", 120000);
+            await Task.Delay(1500);
+            string safe = string.Concat(_opt.Char.Split(Path.GetInvalidFileNameChars()));
+            Snap("char_" + safe);
+            var st = MustState();
+            Note("label " + st["label"] + ", gauntlet " + st["gauntlet"] + ", weapon visible " + Visible(st, "weapon"));
+        }
+
         async Task LiveLoadKeepsUiResponsive()
         {
             string dir = Path.Combine(_opt.FixtureDir, "live");

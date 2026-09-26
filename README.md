@@ -104,7 +104,8 @@ everything passes, 1 on failures, and 2 when the run could not start.
 Options: `--out <dir>`, `--fixtures <dir>` (item SWF cache, default
 `bin\test-fixtures`, downloaded from the game CDN on first use), `--player
 <swf>`, `--only <name,...>`, `--offline` (skips the live CharPage test;
-fixtures must already be cached) and `--timeout <sec>`.
+fixtures must already be cached) and `--timeout <sec>`, and `--char <name>` (also renders that live character
+to `snapshots\char_<name>.png`).
 
 ## Notes
 

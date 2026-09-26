@@ -405,7 +405,7 @@ package character5_fla
       // panel used to send "true"/"false", which could never un-hide).
       public function unarmed(param1:String) : void
       {
-         this.pMC.mcChar.weapon.visible = !AvatarMC.isTrue(param1);
+         this.pMC.setWeaponShown(!AvatarMC.isTrue(param1));
       }
       
       // Hiding the helm shows the hair and the hair's back half again

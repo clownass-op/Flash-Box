@@ -897,8 +897,9 @@ async function applyVars(name, vars, dir) {
   project.name = name;
   document.getElementById('charName').value = name;
   // Fill the Names panel from the character data (original FlashBox parity).
-  project.nameText = name;
-  document.getElementById('nameText').value = name;
+  // The page's own spelling ("Meyr"), not whatever case was typed.
+  project.nameText = vars['strName'] || name;
+  document.getElementById('nameText').value = project.nameText;
   project.gear = {
     Weapon: vars['strWeaponName'] || '',
     Armor: vars['strArmorName'] || vars['strClassName'] || '',
@@ -978,7 +979,20 @@ function updatePills() {
 /* ---- emotes (labels straight from the player's timeline) ---- */
 const EMOTE_GROUPS = {
   Emotes: ['Idle', 'Dance', 'Dance2', 'Laugh', 'Point', 'Wave', 'Bow', 'Cheer', 'Salute', 'Salute2', 'Cry', 'Cry2', 'Sleep', 'Rest', 'Kneel', 'Punt', 'Unsheath', 'Thrash', 'Facepalm', 'Airguitar', 'Backflip', 'Headbang', 'Stepdance', 'Samba', 'Spar', 'Dazed', 'Dodge', 'Powerup', 'Jumpcheer', 'Psychic1', 'Psychic2', 'Throw', 'FireBreath', 'Swordplay', 'Feign', 'Dead', 'Stern', 'Jump', 'Use', 'Danceweapon', 'Useweapon', 'Card'],
-  Combat: ['Attack1', 'Attack2', 'Attack3', 'Attack4', 'UnarmedAttack1', 'UnarmedAttack2', 'UnarmedAttack3', 'KickAttack', 'FlipAttack', 'PolearmAttack1', 'PolearmAttack2', 'RangedAttack1', 'RangedAttack2', 'RangedAttack3', 'WhipAttack', 'GunAttack', 'GunAttack2', 'RifleAttack', 'RifleAttack2', 'Cast1', 'Cast2', 'Cast3', 'Hit', 'Knockout', 'ShieldBlock']
+  Combat: ['Attack1', 'Attack2', 'Attack3', 'Attack4', 'Stab', 'DuelWield/DaggerAttack1', 'DuelWield/DaggerAttack2', 'Sword/ShieldAttack1', 'Sword/ShieldAttack2', 'FistweaponAttack1', 'FistweaponAttack2', 'UnarmedAttack1', 'UnarmedAttack2', 'UnarmedAttack3', 'KickAttack', 'FlipAttack', 'PolearmAttack1', 'PolearmAttack2', 'RangedAttack1', 'RangedAttack2', 'RangedAttack3', 'WhipAttack', 'GunAttack', 'GunAttack2', 'GunAttack3', 'RifleAttack', 'RifleAttack2', 'Castgood', 'Cast1', 'Cast2', 'Cast3', 'Hit', 'Knockout', 'Getup', 'ShieldBlock'],
+  // Combat-ready poses per weapon style; each holds its pose until the next pick.
+  Stances: ['Fight', 'DuelWield/DaggerFight', 'Sword/ShieldFight', 'FistweaponFight', 'PolearmFight', 'RangedFight', 'UnarmedFight', 'RifleFight']
+};
+/* Short button text for the long timeline labels (the real label stays the
+   tooltip and is still matched by the search box). */
+const EMOTE_SHORT = {
+  'DuelWield/DaggerAttack1': 'Dagger Atk 1', 'DuelWield/DaggerAttack2': 'Dagger Atk 2', 'DuelWield/DaggerFight': 'Dagger',
+  'Sword/ShieldAttack1': 'Shield Atk 1', 'Sword/ShieldAttack2': 'Shield Atk 2', 'Sword/ShieldFight': 'Sword+Shield',
+  'FistweaponAttack1': 'Fist Atk 1', 'FistweaponAttack2': 'Fist Atk 2', 'FistweaponFight': 'Fist',
+  'UnarmedAttack1': 'Unarmed 1', 'UnarmedAttack2': 'Unarmed 2', 'UnarmedAttack3': 'Unarmed 3',
+  'PolearmAttack1': 'Polearm 1', 'PolearmAttack2': 'Polearm 2', 'PolearmFight': 'Polearm',
+  'RangedAttack1': 'Ranged 1', 'RangedAttack2': 'Ranged 2', 'RangedAttack3': 'Ranged 3', 'RangedFight': 'Ranged',
+  'RifleAttack2': 'RifleAttack 2', 'RifleFight': 'Rifle', 'UnarmedFight': 'Unarmed', 'Fight': 'Default'
 };
 (function buildEmotes() {
   const grid = document.getElementById('emoteGrid');
@@ -990,8 +1004,9 @@ const EMOTE_GROUPS = {
     EMOTE_GROUPS[group].forEach(n => {
       const b = document.createElement('div');
       b.className = 'emote-btn';
-      b.textContent = n;
+      b.textContent = EMOTE_SHORT[n] || n;
       b.title = n;
+      b.dataset.label = n;
       b.onclick = () => flashCall('loadEmote', [n]);
       grid.appendChild(b);
     });
@@ -1007,7 +1022,8 @@ const EMOTE_GROUPS = {
 document.getElementById('emoteSearch').addEventListener('input', e => {
   const q = e.target.value.trim().toLowerCase();
   document.querySelectorAll('#emoteGrid .emote-btn').forEach(b => {
-    b.style.display = b.textContent.toLowerCase().includes(q) ? '' : 'none';
+    const hit = b.textContent.toLowerCase().includes(q) || (b.dataset.label || '').toLowerCase().includes(q);
+    b.style.display = hit ? '' : 'none';
   });
   document.querySelectorAll('#emoteGrid .grid-head').forEach(h => { h.style.display = q ? 'none' : ''; });
 });
