@@ -1013,6 +1013,15 @@ namespace FlashBoxApp
         const int GearAnimMs = 170;
         Point _lastFormGeomLoc;
         Size _lastFormGeomSize;
+        // The stripped frame (WM_NCCALCSIZE -> 0) corrupts restore
+        // bookkeeping: every maximized -> normal transition lands one
+        // invisible frame + caption bigger (+16x39), cumulatively. Remember
+        // the last user-driven normal bounds and snap back once the
+        // transition settles (verified with a harness: single correction,
+        // user resizes respected).
+        Rectangle _normalBounds;
+        bool _normalBoundsValid;
+        bool _restoreFixPending;
         EdgeResizeFilter _edgeFilter; // edge resizing over the Flash surface (see below)
         bool _flashReady;
         bool _pageReady;
@@ -1121,6 +1130,29 @@ namespace FlashBoxApp
             // (async-void exceptions otherwise kill the process with no UI.)
             try { ApplyWindowRounding(); } catch { }
             try { _edgeFilter = new EdgeResizeFilter(this); Application.AddMessageFilter(_edgeFilter); } catch { }
+            // User-driven geometry only (modal sizing loop end + moves):
+            // transition resizes (maximize/restore) must never overwrite it.
+            _normalBounds = Bounds;
+            _normalBoundsValid = true;
+            ResizeEnd += (oo, ee) => { if (WindowState == FormWindowState.Normal) { _normalBounds = Bounds; _normalBoundsValid = true; } };
+            Move += (oo, ee) => { if (WindowState == FormWindowState.Normal) { _normalBounds = Bounds; _normalBoundsValid = true; } };
+            // Landing in Normal with anything but the remembered bounds means
+            // the stripped frame leaked back in: correct once, deferred past
+            // the transition (a synchronous set storms against it). Covers
+            // every path here (titlebar button, double-click, taskbar, snap).
+            SizeChanged += (oo, ee) =>
+            {
+                if (WindowState == FormWindowState.Normal && _normalBoundsValid && !_restoreFixPending && Bounds != _normalBounds)
+                {
+                    _restoreFixPending = true;
+                    BeginInvoke((Action)(() =>
+                    {
+                        _restoreFixPending = false;
+                        if (IsDisposed || WindowState != FormWindowState.Normal || !_normalBoundsValid) return;
+                        if (Bounds != _normalBounds) Bounds = _normalBounds;
+                    }));
+                }
+            };
 
             try
             {
