@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -37,8 +38,130 @@ namespace FlashBoxApp
         public FlashCore(string baseDir)
         {
             _baseDir = baseDir;
-            BackColor = Color.FromArgb(0x2D, 0x2D, 0x30);
+            BackColor = Color.FromArgb(0x0A, 0x0C, 0x14);
             CreateFlash();
+        }
+
+        // Never take keyboard focus: clicking the avatar/scene would
+        // otherwise yank focus out of the WebView2 page, and the NEXT click
+        // back into the page gets swallowed re-focusing it (dock buttons,
+        // titlebar buttons and drawer inputs randomly "not opening" on
+        // first click). Mouse input is unaffected - only activation is
+        // suppressed, same as the NOACTIVATE overlay windows. Applied to
+        // the whole Flash subtree (AxHost wrapper + inner OCX window).
+        const int GWL_EXSTYLE = -20;
+        const int WS_EX_NOACTIVATE = 0x08000000;
+        [DllImport("user32.dll")]
+        static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        [DllImport("user32.dll")]
+        static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        delegate bool EnumChildProc(IntPtr hWnd, IntPtr lParam);
+        [DllImport("user32.dll")]
+        static extern bool EnumChildWindows(IntPtr hWndParent, EnumChildProc lpEnumFunc, IntPtr lParam);
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ExStyle |= WS_EX_NOACTIVATE;
+                return cp;
+            }
+        }
+
+        static void NoActivateTree(IntPtr root)
+        {
+            try
+            {
+                if (root == IntPtr.Zero) return;
+                try { SetWindowLong(root, GWL_EXSTYLE, GetWindowLong(root, GWL_EXSTYLE) | WS_EX_NOACTIVATE); } catch { }
+                try
+                {
+                    EnumChildWindows(root, (h, p) =>
+                    {
+                        try { SetWindowLong(h, GWL_EXSTYLE, GetWindowLong(h, GWL_EXSTYLE) | WS_EX_NOACTIVATE); } catch { }
+                        return true;
+                    }, IntPtr.Zero);
+                }
+                catch { }
+            }
+            catch { }
+        }
+
+        // Plain-color themes: paint the hosting surface (panel + ActiveX
+        // letterbox) the same color so no dark seam shows around the
+        // player on light backgrounds.
+        public void SetSurfaceColor(Color c)
+        {
+            try { BackColor = c; } catch { }
+            try { if (_flash != null) _flash.BackColor = c; } catch { }
+        }
+
+        // Punches transparent, click-through holes in the Flash surface so
+        // HTML (the dock/sheet overlay, which lives in the WebView2 sibling
+        // window) can visually and interactively sit on top of the live
+        // Flash content instead of being painted over by it. Rectangles are
+        // in this panel's own client coordinates. The Region stays on this
+        // panel (not the ActiveX), so it survives player rebuilds.
+        // cornerRadius rounds each hole to match the overlay's border-radius,
+        // so no square page-background points peek out around rounded
+        // corners (hit-testing follows the rounded shape too).
+        Region _overlayRegion;
+        // Each hole carries its own corner radius (dock/sheet 18 to match
+        // their border-radius, gear rail 0 - it has no background, so a
+        // rounded hole would fringe a visible gray seam around it).
+        public void SetOverlayHoles(IEnumerable<Tuple<Rectangle, int>> holesInPanelCoords)
+        {
+            try
+            {
+                if (_overlayRegion != null) { _overlayRegion.Dispose(); _overlayRegion = null; }
+                Region region = new Region(this.ClientRectangle);
+                // Exclude one hole at a time: slide pre-cuts report both the
+                // resting rect and the live rect for the same panel, and those
+                // heavily overlap. Adding both subpaths to ONE GraphicsPath
+                // leaves their overlap filled (even-odd) so it is NOT excluded
+                // - Flash then paints over the panel mid-slide and it flashes.
+                foreach (var hole in holesInPanelCoords)
+                {
+                    var r = hole.Item1;
+                    int cornerRadius = hole.Item2;
+                    if (cornerRadius > 0)
+                    {
+                        using (var path = new GraphicsPath())
+                        {
+                            AddRoundedRect(path, r, cornerRadius);
+                            region.Exclude(path);
+                        }
+                    }
+                    else
+                    {
+                        region.Exclude(r);
+                    }
+                }
+                _overlayRegion = region;
+                this.Region = region;
+            }
+            catch { }
+        }
+
+        static void AddRoundedRect(GraphicsPath path, Rectangle r, int radius)
+        {
+            int d = Math.Max(1, Math.Min(radius * 2, Math.Min(r.Width, r.Height)));
+            path.AddArc(r.X, r.Y, d, d, 180, 90);
+            path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+        }
+
+        public void ClearOverlayHoles()
+        {
+            try
+            {
+                if (_overlayRegion != null) { _overlayRegion.Dispose(); _overlayRegion = null; }
+                this.Region = null;
+            }
+            catch { }
         }
 
         bool _started;
@@ -48,6 +171,12 @@ namespace FlashBoxApp
         // constructor, i.e. before anyone could subscribe to Ready, so
         // subscribers must check this after attaching.
         public bool Started { get { return _started; } }
+
+        // Native window of the Flash ActiveX itself (child of this panel).
+        internal IntPtr ActiveHandle
+        {
+            get { try { return _flash != null ? _flash.Handle : IntPtr.Zero; } catch { return IntPtr.Zero; } }
+        }
 
         void CreateFlash()
         {
@@ -68,6 +197,8 @@ namespace FlashBoxApp
         {
             if (_started) return;
             _started = true;
+            NoActivateTree(Handle);
+            if (_flash != null) NoActivateTree(_flash.Handle);
             LoadPlayer();
             var r = Ready;
             if (r != null) r();

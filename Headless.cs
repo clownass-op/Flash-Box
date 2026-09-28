@@ -1024,23 +1024,24 @@ namespace FlashBoxApp
             using (var b = Flash.Snapshot()) b.Save(Path.Combine(_snapDir, "bg_color_magenta.png"), ImageFormat.Png);
             Color px = CornerPixel();
             Expect(px.R > 200 && px.G < 60 && px.B > 200, "background color not applied (corner pixel " + px + ")");
-            await Js("setBgColor('#2d2d30')");
+            await Js("setBgColor('#0a0c14')");
         }
 
-        // BG tab "Empty": drops the scene, leaves the plain background color.
+        // BG tab: clicking the selected scene again clears it, leaving the
+        // plain background color (no "Empty" chip).
         async Task UiEmptyBackground()
         {
-            await Js("setBgColor('#2d2d30')");
+            await Js("setBgColor('#0a0c14')");
             await Js("project.bgScene='Hill';sendBackground();");
             await Task.Delay(700);
             Color scene = CornerPixel();
-            await Js("[...document.querySelectorAll('#bgGrid .bg-pick')].find(b => b.textContent === 'Empty').click()");
+            await Js("[...document.querySelectorAll('#bgGrid .bg-pick')].find(b => b.textContent === 'Hill').click()");
             await Task.Delay(500);
             Color px = CornerPixel();
-            Expect(!(scene.R == 45 && scene.G == 45 && scene.B == 48), "fixture scene did not load (corner " + scene + ")");
-            Expect(px.R == 45 && px.G == 45 && px.B == 48, "Empty should leave the default #2D2D30, corner pixel " + px);
-            bool on = JsonConvert.DeserializeObject<bool>(await Js("[...document.querySelectorAll('#bgGrid .bg-pick')].find(b => b.textContent === 'Empty').classList.contains('on')"));
-            Expect(on, "Empty chip not highlighted");
+            Expect(!(scene.R == 10 && scene.G == 12 && scene.B == 20), "fixture scene did not load (corner " + scene + ")");
+            Expect(px.R == 10 && px.G == 12 && px.B == 20, "Deselecting the scene should leave the default #0A0C14, corner pixel " + px);
+            bool anyOn = JsonConvert.DeserializeObject<bool>(await Js("[...document.querySelectorAll('#bgGrid .bg-pick')].some(b => b.classList.contains('on'))"));
+            Expect(!anyOn, "a scene chip is still highlighted after deselect");
         }
 
         // Title bar option now follows the chosen background color.
@@ -1050,7 +1051,7 @@ namespace FlashBoxApp
               const t = document.querySelector('.titlebar'), cb = document.getElementById('matchTitle');
               if (cb.checked) cb.click();
               const dark = getComputedStyle(t).backgroundColor;
-              const rail = getComputedStyle(document.querySelector('.siderail')).backgroundColor;
+              const rail = 'rgb(11, 13, 23)'; // --rail: title bar default (no rail element anymore)
               cb.click();
               setBgColor('#3366cc');
               const blue = getComputedStyle(t).backgroundColor, blueLight = t.classList.contains('light');
@@ -1058,7 +1059,7 @@ namespace FlashBoxApp
               const pale = getComputedStyle(t).backgroundColor, paleLight = t.classList.contains('light');
               let stored = null; try { stored = localStorage.getItem('fb.matchTitle'); } catch (e) {}
               cb.click();
-              setBgColor('#2d2d30');
+              setBgColor('#0a0c14');
               return JSON.stringify({ dark, rail, blue, blueLight, pale, paleLight, stored, off: getComputedStyle(t).backgroundColor });
             })()";
             var r = JObject.Parse(JsonConvert.DeserializeObject<string>(await Js(js)));
@@ -1073,13 +1074,13 @@ namespace FlashBoxApp
         // and the corner is styled.
         async Task UiMonitorScroll()
         {
+            await Js(@"(() => { const m = document.getElementById('monitor'); m.textContent = Array(80).fill('[ok] (cos) Helm  items\\helms\\' + 'X'.repeat(90) + '.swf').join('\n'); })()");
+            await JsAwait("openTab('monitor')");
             string js = @"(() => {
               const m = document.getElementById('monitor');
-              m.textContent = Array(80).fill('[ok] (cos) Helm  items\\helms\\' + 'X'.repeat(90) + '.swf').join('\n');
-              activateTab('monitor'); if (document.body.classList.contains('nopanel')) activateTab('monitor');
               const over = m.scrollWidth - m.clientWidth;
               const corner = [...document.styleSheets].some(ss => { try { return [...ss.cssRules].some(r => r.selectorText && r.selectorText.indexOf('scrollbar-corner') >= 0); } catch (e) { return false; } });
-              document.body.classList.add('nopanel');
+              closeSheet();
               return JSON.stringify({ over, corner });
             })()";
             var r = JObject.Parse(JsonConvert.DeserializeObject<string>(await Js(js)));
@@ -1149,31 +1150,37 @@ namespace FlashBoxApp
 
         // Panel layout regressions from user screenshots: squashed chip text,
         // cut-off Browse button / horizontal scroll, oblong dye swatches.
+        // (openTab is async - it awaits the overlay-hole round-trip after
+        // revealing the sheet - so each tab is awaited open before measuring.)
         async Task UiLayout()
         {
-            string js = @"(() => {
+            await Js("window.__noUiLock = true"); // rapid tab loop must not hit transition discipline
+            await Js(@"window.__measureTab = (tab) => {
               const out = [];
-              document.querySelectorAll('.drawer').forEach(d => d.style.transition = 'none');
-              for (const tab of ['backgrounds','emotes','misc','colors','log','sizes','names','monitor']) {
-                activateTab(tab);
-                if (document.body.classList.contains('nopanel')) activateTab(tab);
-                const inner = document.querySelector('.drawer-inner');
-                if (inner.scrollWidth > inner.clientWidth + 1) out.push(tab + ': horizontal overflow ' + (inner.scrollWidth - inner.clientWidth) + 'px');
-                document.querySelectorAll('#p-' + tab + ' .bg-pick, #p-' + tab + ' .emote-btn').forEach(b => {
-                  if (b.offsetParent && b.scrollHeight > b.clientHeight + 1) out.push(tab + ': clipped chip ' + b.textContent + ' ' + b.clientHeight + '/' + b.scrollHeight);
-                });
-                document.querySelectorAll('#p-' + tab + ' .wheel-node input[type=color]').forEach(i => {
-                  const r = i.getBoundingClientRect();
-                  if (Math.abs(r.width - r.height) > 1) out.push(tab + ': dye swatch not round ' + r.width + 'x' + r.height);
-                });
-                const br = document.getElementById('btnBrowse').getBoundingClientRect(), dr = inner.getBoundingClientRect();
-                if (tab === 'misc' && br.right > dr.right + 1) out.push('misc: Browse button cut off');
-              }
-              document.body.classList.add('nopanel');
-              return JSON.stringify(out.slice(0, 12));
-            })()";
-            var res = JArray.Parse(JsonConvert.DeserializeObject<string>(await Js(js)));
-            Expect(res.Count == 0, "layout: " + string.Join("; ", res));
+              const inner = document.querySelector('.sheet-inner');
+              if (inner.scrollWidth > inner.clientWidth + 1) out.push(tab + ': horizontal overflow ' + (inner.scrollWidth - inner.clientWidth) + 'px');
+              document.querySelectorAll('#p-' + tab + ' .bg-pick, #p-' + tab + ' .emote-btn').forEach(b => {
+                if (b.offsetParent && b.scrollHeight > b.clientHeight + 1) out.push(tab + ': clipped chip ' + b.textContent + ' ' + b.clientHeight + '/' + b.scrollHeight);
+              });
+              document.querySelectorAll('#p-' + tab + ' .wheel-node input[type=color]').forEach(i => {
+                const r = i.getBoundingClientRect();
+                if (Math.abs(r.width - r.height) > 1) out.push(tab + ': dye swatch not round ' + r.width + 'x' + r.height);
+              });
+              const br = document.getElementById('btnBrowse').getBoundingClientRect(), dr = inner.getBoundingClientRect();
+              if (tab === 'misc' && br.right > dr.right + 1) out.push('misc: Browse button cut off');
+              return JSON.stringify(out);
+            };
+            document.querySelectorAll('.sheet').forEach(d => d.style.transition = 'none');");
+            var found = new List<string>();
+            foreach (var tab in new[] { "backgrounds", "emotes", "misc", "colors", "log", "names", "monitor" })
+            {
+                await JsAwait("openTab('" + tab + "')");
+                var res = JArray.Parse(JsonConvert.DeserializeObject<string>(await Js("window.__measureTab('" + tab + "')")));
+                foreach (var s in res) found.Add(s.Value<string>());
+                if (found.Count >= 12) break;
+            }
+            await Js("closeSheet()");
+            Expect(found.Count == 0, "layout: " + string.Join("; ", found));
         }
 
 
@@ -1208,10 +1215,16 @@ namespace FlashBoxApp
         {
             var cases = new[]
             {
-                // preview, gear list (client coords) - from the user's screenshots
-                Tuple.Create(new Rectangle(264, 40, 568, 488), new Rectangle(276, 150, 240, 280)),
-                Tuple.Create(new Rectangle(404, 40, 412, 449), new Rectangle(416, 120, 240, 280)),
-                Tuple.Create(new Rectangle(45, 40, 771, 449), new Rectangle(57, 117, 240, 214)),
+                // preview, gear list (client coords) - gear sits left by
+                // default, right while the sheet menu is open
+                Tuple.Create(new Rectangle(264, 40, 568, 488), new Rectangle(276, 144, 240, 280)),
+                Tuple.Create(new Rectangle(404, 40, 412, 449), new Rectangle(564, 124, 240, 280)),
+                Tuple.Create(new Rectangle(45, 40, 771, 449), new Rectangle(57, 157, 240, 214)),
+                // short preview, gear on the right: centered gear reaches the
+                // top and overlaps the centered typing line -> squeezes left
+                Tuple.Create(new Rectangle(45, 40, 771, 300), new Rectangle(564, 50, 240, 280)),
+                // short preview, gear on the left -> squeezes right
+                Tuple.Create(new Rectangle(45, 40, 771, 300), new Rectangle(57, 50, 240, 280)),
                 Tuple.Create(new Rectangle(45, 40, 771, 449), Rectangle.Empty),
             };
             foreach (var c in cases)

@@ -63,6 +63,17 @@ namespace FlashBoxApp
             return _form.DoFlashQuery(method);
         }
         public void Background(string name) { Ui(() => _form.DoBackground(name)); }
+        public void ThemeColor(string hex) { Ui(() => _form.DoThemeColor(hex)); }
+        // dockHidden/sheetHidden ride along so the rail can tell a hidden
+        // panel (whose rects are still reported to keep the slide-path hole
+        // cut) from a shown one. object (not bool) so single-arg callers
+        // (Type.Missing) don't trip COM marshalling; omitted/false = infer.
+        public void ReportOverlayRects(string rectsJson, object dockHidden, object sheetHidden)
+        {
+            bool dockH = dockHidden is bool b && b;
+            bool sheetH = sheetHidden is bool s && s;
+            Ui(() => _form.DoOverlayRects(rectsJson, dockH, sheetH));
+        }
         public void Reset() { Ui(() => _form.DoReset()); }
         public void LoadItem(string itemType, string itemFile, string weaponType, string link) { Ui(() => _form.DoLoadItem(itemType, itemFile, weaponType, link)); }
         public void DropItemBytes(string itemType, string fileName, string base64) { Ui(() => _form.DoDropItem(itemType, fileName, base64)); }
@@ -244,7 +255,10 @@ namespace FlashBoxApp
     }
 
     // HudOverlay: transparent, click-through layered window floating over the
-    // Flash preview's left edge (CharPage-style icon + name list). A normal
+    // Flash preview's edge (CharPage-style icon + name list: sword, helm,
+    // armor names...). Transparent - icons + names float over the scene
+    // with no background. Parked left by default; nudged just right of the
+    // sheet menu while it is open, then back. A normal
     // WinForms panel can't do this: "transparent" only fakes the parent's
     // background, never the sibling Flash window beneath. A WS_EX_LAYERED
     // window composited with per-pixel alpha really floats above the scene,
@@ -508,6 +522,8 @@ namespace FlashBoxApp
                 using (var g = Graphics.FromImage(bmp))
                 {
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                    // No background: icons + names float transparently over
+                    // the scene (per-pixel alpha), exactly like before.
                     using (var white = new SolidBrush(Color.FromArgb(255, 255, 255, 255)))
                     using (var shade = new SolidBrush(Color.FromArgb(230, 0, 0, 0)))
                     {
@@ -602,11 +618,33 @@ namespace FlashBoxApp
             return new Rectangle(x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
         }
 
-        public void Follow(Rectangle flashClientRect, Func<Point, Point> toScreen)
+        public void Follow(Rectangle flashClientRect, Func<Point, Point> toScreen, bool rightSide)
         {
-            if (!Visible) return;
-            var p = toScreen(new Point(flashClientRect.X + 12, flashClientRect.Y + Math.Max(0, (flashClientRect.Height - Height) / 2)));
-            Location = p;
+            // Default: beside the dock. When the sheet menu opens the caller passes
+            // an x just right of the sheet (see FollowGear) instead of the
+            // far right edge, so the list only nudges across a little.
+            // Position even while hidden so the first Show lands in place
+            // instead of flashing at the default window spot.
+            FollowAt(flashClientRect, toScreen, rightSide ? flashClientRect.Right - Width - 12 : flashClientRect.X + 12);
+        }
+
+        public void FollowAt(Rectangle flashClientRect, Func<Point, Point> toScreen, int xClient)
+        {
+            Location = GearTargetPoint(flashClientRect, toScreen, xClient, Width, Height);
+        }
+
+        internal static Point GearTargetPoint(Rectangle flashClientRect, Func<Point, Point> toScreen, int xClient, int w, int h)
+        {
+            int y = flashClientRect.Y + Math.Max(0, (flashClientRect.Height - h) / 2);
+            int x = Math.Max(flashClientRect.X, Math.Min(xClient, flashClientRect.Right - w));
+            // Keep clear of the bottom-right corner buttons when parked over
+            // on the right side.
+            if (x + w > flashClientRect.Right - 70)
+            {
+                int maxY = flashClientRect.Bottom - h - 60;
+                if (maxY > flashClientRect.Y + 8 && y > maxY) y = maxY;
+            }
+            return toScreen(new Point(x, y));
         }
 
         protected override void Dispose(bool disposing)
@@ -954,7 +992,6 @@ namespace FlashBoxApp
         HudOverlay _gear;
         CosmeticsOverlay _cos;
         LoaderOverlay _loader;
-        bool _loaderPresented;
         CosmeticsOverlay _mag;
         readonly object _loadLock = new object();
         string _pendingLoad;
@@ -962,6 +999,21 @@ namespace FlashBoxApp
         bool _cosHas, _cosOn;                 // last state pushed by the page
         bool _cosPushedHas, _cosPushedOn;     // state last rendered (kept for diagnostics)
         System.Windows.Forms.Timer _watchdog; // re-assert overlays: layered windows can miss a show/position (minimize, DWM transitions)
+        // Gear glide state: ease-out slide between parking spots on menu
+        // toggles, plus slide in from / out to the left screen edge on
+        // show/hide. Drags/resizes snap (tracked below) so the rail never
+        // lags behind the window. Hide() lands only after an out-glide
+        // (see _gearAnimHidePending), so a watchdog FollowGear mid-glide
+        // can't yank the rail back into view.
+        System.Windows.Forms.Timer _gearAnimTimer;
+        Point _gearAnimFrom, _gearAnimTo;
+        int _gearAnimStart;
+        bool _gearAnimHidePending;   // current/next glide ends in Hide()
+        bool _gearAnimHideWas;      // hide flag of the running glide
+        const int GearAnimMs = 170;
+        Point _lastFormGeomLoc;
+        Size _lastFormGeomSize;
+        EdgeResizeFilter _edgeFilter; // edge resizing over the Flash surface (see below)
         bool _flashReady;
         bool _pageReady;
         bool _hostReadySent;
@@ -1015,7 +1067,23 @@ namespace FlashBoxApp
                 // (The loader line is NOT presented here: the booting Flash
                 // ActiveX grabs focus seconds after start, killing typing.
                 // It presents from OnFlashReady instead, once boot settles.)
-                try { if (!IsDisposed && _flash != null && _flash.Visible) FollowGear(); } catch { }
+                try
+                {
+                    // Show the rail straight from the form rect: don't wait
+                    // for the page's first reportRect (WebView init takes
+                    // seconds on a cold start). Snug left (dock starts
+                    // closed); FollowGear seats it exactly once Flash
+                    // reports in.
+                    if (!IsDisposed && _gear != null && _gear.HasRows && !_gear.Visible)
+                    {
+                        int gy = 40 + Math.Max(0, (ClientSize.Height - 40 - _gear.Height) / 2);
+                        _gear.Location = PointToScreen(new Point(12, gy));
+                        _gear.Show(this);
+                    }
+                    if (!IsDisposed && _flash != null && _flash.Visible) FollowGear();
+                }
+                catch { }
+                FocusPage();
             };
         }
 
@@ -1025,6 +1093,8 @@ namespace FlashBoxApp
         void OnFormClosed(object s, FormClosedEventArgs e)
         {
             try { if (_watchdog != null) { _watchdog.Stop(); _watchdog.Dispose(); } } catch { }
+            try { if (_gearAnimTimer != null) { _gearAnimTimer.Stop(); _gearAnimTimer.Dispose(); _gearAnimTimer = null; } } catch { }
+            try { if (_edgeFilter != null) { Application.RemoveMessageFilter(_edgeFilter); _edgeFilter = null; } } catch { }
             try { if (_gear != null) _gear.Close(); } catch { }
             try { if (_loader != null) _loader.Close(); } catch { }
             try { if (_mag != null) _mag.Close(); } catch { }
@@ -1050,6 +1120,7 @@ namespace FlashBoxApp
             // window with an explanation, never a silent instant exit.
             // (async-void exceptions otherwise kill the process with no UI.)
             try { ApplyWindowRounding(); } catch { }
+            try { _edgeFilter = new EdgeResizeFilter(this); Application.AddMessageFilter(_edgeFilter); } catch { }
 
             try
             {
@@ -1139,6 +1210,7 @@ namespace FlashBoxApp
                     return;
                 }
                 _core.Navigate("file:///" + html.Replace('\\', '/'));
+                FocusPage();
             }
             catch (Exception ex)
             {
@@ -1161,9 +1233,11 @@ namespace FlashBoxApp
                 _gear.IconClicked += OnGearIcon;
                 _gear.FileDropped += (slot, path) => DoDropFile(slot, path);
                 // Slot icons visible from the start (dimmed, no names): they
-                // double as drop targets for SWF files.
+                // double as drop targets for SWF files. Stay hidden until
+                // FollowGear positions over the Flash preview: showing now
+                // flashes the icons at the default (0,0) window spot for a
+                // split second on startup.
                 _gear.SetRows(AppDomain.CurrentDomain.BaseDirectory, DefaultGearRows());
-                try { _gear.Show(this); } catch { try { _gear.Show(); } catch { } }
                 LocationChanged += (o, ev) => FollowGear();
                 SizeChanged += (o, ev) => FollowGear();
             }
@@ -1265,10 +1339,9 @@ namespace FlashBoxApp
             Dbg("FlashCore ready");
             _flashReady = true;
             MaybeSendHostReady();
-            // Present the typing line now that boot (and its focus grab)
-            // is over; presenting earlier lets Flash steal typing seconds
-            // after start.
-            if (!_loaderPresented) PresentLoader();
+            FocusPage();
+            // No auto-present: the typing line only appears when summoned
+            // with the magnifier button.
         }
 
         void MaybeSendHostReady()
@@ -1327,10 +1400,110 @@ namespace FlashBoxApp
             int w = args.Value<int>("w");
             int h = args.Value<int>("h");
             if (w <= 0 || h <= 0) { _flash.Visible = false; if (_gear != null && _gear.Visible) _gear.Hide(); if (_cos != null && _cos.Visible) _cos.Hide(); return; }
+            if (_flash.Bounds.X != x || _flash.Bounds.Y != y || _flash.Bounds.Width != w || _flash.Bounds.Height != h)
+                Dbg("PositionFlash " + x + "," + y + "," + w + "," + h);
             _flash.SetBounds(x, y, w, h);
             _flash.Visible = true;
             _flash.BringToFront();
+            ApplyOverlayHoles();   // <-- add this: reapply hole against the new true offset
             FollowGear();
+        }
+
+        // Rail parking, from the live holes (dock ~50px, sheet 320/430px):
+        // sheet edge + 12 while the menu is open, dock edge + 12 while the
+        // dock is open, screen edge + 12 when both are closed. _lastDockHidden
+        // /_lastSheetHidden come from the page: a hidden panel still reports
+        // its rects (the slide-path hole must stay cut while it animates
+        // out), so width inference alone would park the rail beside a panel
+        // that is gone.
+        int GearRestX(Rectangle flashClient)
+        {
+            bool dockVisible = false, sheetVisible = false;
+            int sheetRight = 0;
+            foreach (var h in _lastOverlayRectsFormCoords)
+            {
+                if (h.Item1.Width > 100) { sheetVisible = true; if (h.Item1.Right > sheetRight) sheetRight = h.Item1.Right; }
+                else dockVisible = true;
+            }
+            dockVisible = dockVisible && !_lastDockHidden;
+            sheetVisible = sheetVisible && !_lastSheetHidden;
+            if (sheetVisible && sheetRight > flashClient.X) return sheetRight + 12;
+            return flashClient.X + (dockVisible ? 74 : 12);
+        }
+
+        void StopGearAnim()
+        {
+            try { if (_gearAnimTimer != null) _gearAnimTimer.Stop(); } catch { }
+        }
+
+        void AnimateGearTo(Point screenTarget, bool hideOnArrive = false)
+        {
+            if (_gear == null || _gear.IsDisposed) { StopGearAnim(); return; }
+            if (!_gear.Visible) { try { _gear.Location = screenTarget; } catch { } StopGearAnim(); return; }
+            int dx = screenTarget.X - _gear.Location.X, dy = screenTarget.Y - _gear.Location.Y;
+            if (dx * dx + dy * dy < 16)
+            {
+                if (hideOnArrive) { _gearAnimHidePending = false; try { _gear.Hide(); } catch { } }
+                StopGearAnim();
+                return;
+            }
+            _gearAnimHidePending = hideOnArrive;
+            // Same destination already gliding: let it ride, don't restart.
+            if (_gearAnimTimer != null && _gearAnimTimer.Enabled && _gearAnimTo == screenTarget && _gearAnimHideWas == hideOnArrive) return;
+            _gearAnimFrom = _gear.Location;
+            _gearAnimTo = screenTarget;
+            _gearAnimHideWas = hideOnArrive;
+            _gearAnimStart = Environment.TickCount;
+            if (_gearAnimTimer == null)
+            {
+                _gearAnimTimer = new System.Windows.Forms.Timer { Interval = 15 };
+                _gearAnimTimer.Tick += (o, e) =>
+                {
+                    try
+                    {
+                        if (_gear == null || _gear.IsDisposed) { StopGearAnim(); return; }
+                        double t = (Environment.TickCount - _gearAnimStart) / (double)GearAnimMs;
+                        if (t >= 1)
+                        {
+                            _gear.Location = _gearAnimTo;
+                            if (_gearAnimHideWas) { _gearAnimHidePending = false; try { _gear.Hide(); } catch { } }
+                            StopGearAnim();
+                            return;
+                        }
+                        double k = 1 - Math.Pow(1 - t, 3); // ease-out cubic
+                        _gear.Location = new Point(
+                            _gearAnimFrom.X + (int)Math.Round((_gearAnimTo.X - _gearAnimFrom.X) * k),
+                            _gearAnimFrom.Y + (int)Math.Round((_gearAnimTo.Y - _gearAnimFrom.Y) * k));
+                    }
+                    catch { StopGearAnim(); }
+                };
+            }
+            _gearAnimTimer.Start();
+        }
+
+        // Slide the rail in from the left screen edge (its parking side).
+        // Used on every hidden -> shown transition; cancels a pending
+        // slide-out. The window is parked fully off-screen first so the
+        // glide starts from the edge, not from its old spot.
+        void GearSlideIn(Point rest)
+        {
+            if (_gear == null || _gear.IsDisposed) return;
+            _gearAnimHidePending = false;
+            if (!_gear.Visible)
+            {
+                try { _gear.Location = new Point(rest.X - _gear.Width - 8, rest.Y); } catch { }
+                try { if (!IsDisposed && _gear.Owner != this) _gear.Show(this); } catch { try { _gear.Show(); } catch { } }
+            }
+            AnimateGearTo(rest);
+        }
+
+        // Slide the rail out to the left screen edge; Hide() lands only once
+        // the glide arrives (AnimateGearTo with hideOnArrive).
+        void GearSlideOut()
+        {
+            if (_gear == null || _gear.IsDisposed || !_gear.Visible) return;
+            var target = new Point(_gear.Location.X - _gear.Width - 8, _gear.Location.Y);
+            AnimateGearTo(target, true);
         }
 
         void FollowGear()
@@ -1339,11 +1512,19 @@ namespace FlashBoxApp
             var b = _flash.Bounds;
             if (_gear != null)
             {
-                _gear.Follow(b, p => PointToScreen(p));
-                if (_gear.HasRows && !_gear.Visible)
-                {
-                    try { if (!IsDisposed) _gear.Show(this); } catch { }
-                }
+                // Snug left edge when the dock is closed; beside the dock
+                // when it is open (never on top of it); nudged just right
+                // of the sheet's edge while the menu is open. Derived fresh
+                // from the reported holes every time, so any dropped signal
+                // self-heals on the next follow. Window drags/resizes snap;
+                // menu toggles glide (AnimateGearTo).
+                Point target = HudOverlay.GearTargetPoint(b, p => PointToScreen(p), GearRestX(b), _gear.Width, _gear.Height);
+                bool geomMoved = Location != _lastFormGeomLoc || ClientSize != _lastFormGeomSize;
+                _lastFormGeomLoc = Location;
+                _lastFormGeomSize = ClientSize;
+                if (geomMoved || !_gear.Visible) { try { _gear.Location = target; } catch { } StopGearAnim(); }
+                else if (!_gearAnimHidePending) AnimateGearTo(target); // never fight a slide-out
+                if (_gear.HasRows && !_gear.Visible && !_gearAnimHidePending) GearSlideIn(target);
             }
             // Shirt button tracks the preview's bottom-right corner
             // (CharPage parity), independent of the gear list.
@@ -1409,9 +1590,10 @@ namespace FlashBoxApp
         }
 
         // Typing-line placement: centered over the preview (not the whole
-        // window, which includes the side drawer) near its top edge, where it
-        // can't cover the gear list or the avatar; narrowed to fit, and
-        // shifted right of the gear list when the two would still overlap.
+        // window) near its top edge, where it can't cover the gear list or
+        // the avatar; narrowed to fit, and shifted clear of the gear list
+        // on whichever edge it sits (left by default, right while the
+        // sheet menu is open) when the two would still overlap.
         internal static Rectangle LoaderRect(Rectangle preview, Rectangle gear, int height)
         {
             const int Margin = 16, MaxW = 360, MinW = 160;
@@ -1421,9 +1603,19 @@ namespace FlashBoxApp
             var r = new Rectangle(x, y, w, height);
             if (!gear.IsEmpty && r.IntersectsWith(gear))
             {
-                int left = gear.Right + Margin;
-                w = Math.Max(MinW, Math.Min(w, preview.Right - Margin - left));
-                r = new Rectangle(left, y, w, height);
+                bool gearOnRight = gear.Left + gear.Width / 2 >= preview.Left + preview.Width / 2;
+                if (gearOnRight)
+                {
+                    int right = gear.Left - Margin;
+                    w = Math.Max(MinW, Math.Min(w, right - (preview.X + Margin)));
+                    r = new Rectangle(Math.Max(preview.X + Margin, right - w), y, w, height);
+                }
+                else
+                {
+                    int left = gear.Right + Margin;
+                    w = Math.Max(MinW, Math.Min(w, preview.Right - Margin - left));
+                    r = new Rectangle(left, y, w, height);
+                }
             }
             return r;
         }
@@ -1431,7 +1623,6 @@ namespace FlashBoxApp
         void PresentLoader()
         {
             if (_loader == null || IsDisposed) return;
-            _loaderPresented = true;
             CenterLoader();
             _loader.Present(this);
         }
@@ -1513,6 +1704,24 @@ namespace FlashBoxApp
             catch { }
         }
 
+        // WebView2-in-WinForms quirk: the first click into the page can be
+        // swallowed to activate/focus the control instead of reaching the
+        // page. Focus it up front (navigate, shown, and Flash-ready - the
+        // last focus-grabber in the boot sequence) so the user's first click
+        // counts. Skipped when another app is foreground or the loader line
+        // owns focus, so typing is never interrupted.
+        void FocusPage()
+        {
+            try
+            {
+                if (_web == null || _web.IsDisposed || IsDisposed) return;
+                if (!ForegroundIsOurs()) return;
+                if (_loader != null && _loader.Visible && _loader.ContainsFocus) return;
+                _web.Focus();
+            }
+            catch { }
+        }
+
         // ---- window drag via caption trick ----
         void StartDrag()
         {
@@ -1529,6 +1738,64 @@ namespace FlashBoxApp
         }
         public void DoClose() { Close(); }
         public void DoStartDrag() { StartDrag(); }
+
+        // Edge resizing over the Flash surface: the Flash ActiveX is a native
+        // window above the page, so the HTML edge grips can't receive the
+        // mouse where it covers them. This filter watches button-downs that
+        // land inside the Flash window near a client edge and starts a native
+        // sizing loop instead, keeping the preview full-bleed with no dead
+        // strips. Anything else (titlebar, rail, drawer, overlay buttons,
+        // non-normal window state) passes through untouched. The HTML grips
+        // remain as a fallback for when Flash is hidden.
+        class EdgeResizeFilter : IMessageFilter
+        {
+            readonly AppForm _f;
+            public EdgeResizeFilter(AppForm f) { _f = f; }
+            const int WM_LBUTTONDOWN = 0x201;
+            public bool PreFilterMessage(ref Message m)
+            {
+                var f = _f;
+                if (f == null || f.IsDisposed || m.Msg != WM_LBUTTONDOWN) return false;
+                try
+                {
+                    if (f.WindowState != FormWindowState.Normal) return false;
+                    if (!f.IsFlashWindow(m.HWnd)) return false;
+                    Point c = f.PointToClient(Cursor.Position);
+                    const int tol = 6;
+                    bool l = c.X < tol;
+                    bool r = c.X >= f.ClientSize.Width - tol;
+                    bool b = c.Y >= f.ClientSize.Height - tol;
+                    if (!l && !r && !b) return false;
+                    int ht = b ? (l ? 16 : r ? 17 : 15) : (l ? 10 : 11);
+                    ReleaseCapture();
+                    SendMessage(f.Handle, WM_NCLBUTTONDOWN, ht, IntPtr.Zero);
+                    return true;
+                }
+                catch { return false; }
+            }
+        }
+
+        // True when h belongs to the Flash surface (panel or ActiveX child).
+        // Overlay buttons, the loader line, WebView2 and foreign windows
+        // never match, so their clicks always pass through.
+        bool IsFlashWindow(IntPtr h)
+        {
+            try
+            {
+                if (h == IntPtr.Zero || _flash == null) return false;
+                IntPtr panel = IntPtr.Zero, ax = IntPtr.Zero;
+                try { panel = _flash.Handle; } catch { }
+                try { ax = _flash.ActiveHandle; } catch { }
+                IntPtr p = h;
+                while (p != IntPtr.Zero && p != Handle)
+                {
+                    if (p == panel || p == ax) return true;
+                    p = GetParent(p);
+                }
+            }
+            catch { }
+            return false;
+        }
 
         // Page edge handles -> native sizing loop (same trick as the titlebar
         // drag: hand the button-down to Windows as a frame hit).
@@ -1555,17 +1822,22 @@ namespace FlashBoxApp
         public bool IsMaximized { get { return WindowState == FormWindowState.Maximized; } }
 
         // Misc > Hide interface: the native overlays over the preview (gear
-        // list, magnifier, shirt button) - clean screenshots.
+        // list, magnifier, shirt button) - clean screenshots. The gear rail
+        // slides out to the left edge (Hide lands on glide arrival); the
+        // buttons hide instantly.
         bool _overlaysHidden;
         public void DoSetOverlaysHidden(bool hidden)
         {
             _overlaysHidden = hidden;
-            foreach (Form f in new Form[] { _gear, _cos, _mag })
+            if (hidden) GearSlideOut();
+            foreach (Form f in new Form[] { _cos, _mag })
             {
                 try { if (f != null && hidden && f.Visible) f.Hide(); } catch { }
             }
             if (!hidden) FollowGear();
         }
+        // Full-menu dock starts closed for a clean preview (toggled by the
+        // titlebar settings button); the gear rail itself always shows.
         public void DoReportRect(int x, int y, int w, int h) { PositionFlash(new JObject { { "x", x }, { "y", y }, { "w", w }, { "h", h } }); }
         // Page -> overlay: {has (character owns a cosmetic set), on}.
         public void DoCosmeticsButton(string stateJson)
@@ -1610,11 +1882,16 @@ namespace FlashBoxApp
             try { rows = JArray.Parse(rowsJson ?? "[]"); } catch { }
             _gear.SetRows(AppDomain.CurrentDomain.BaseDirectory, rows);
             if (!_gear.HasRows) return;
-            try
+            // No manual Show during a pending slide-out: the glide's Hide()
+            // landing would fight a mid-flight re-show (watchdog tick).
+            if (!_gearAnimHidePending)
             {
-                if (!IsDisposed && _gear.Owner != this) _gear.Show(this);
+                try
+                {
+                    if (!IsDisposed && _gear.Owner != this) _gear.Show(this);
+                }
+                catch { try { _gear.Show(); } catch { } }
             }
-            catch { try { _gear.Show(); } catch { } }
             FollowGear();
         }
 
@@ -1687,6 +1964,70 @@ namespace FlashBoxApp
         }
         public string DoFlashQuery(string method) { if (_flash == null) return ""; return _flash.QueryFlash(method); }
         public void DoBackground(string name) { if (_flash != null) _flash.LoadBackground(name); }
+        // Cache of the last overlay rects the page reported (in Form-client
+        // coordinates, same space PositionFlash receives). Re-applied every time
+        // PositionFlash runs so the punched hole always tracks _flash's true
+        // current position, instead of depending on which arrived first at boot.
+        List<Tuple<Rectangle, int>> _lastOverlayRectsFormCoords = new List<Tuple<Rectangle, int>>();
+        // Last dock/sheet-hidden flags from the page (a hidden panel still
+        // reports rects for the slide-path hole; GearRestX must not read
+        // them as "visible"). Default false = old width-inference behavior.
+        bool _lastDockHidden;
+        bool _lastSheetHidden;
+
+        void ApplyOverlayHoles()
+        {
+            if (_flash == null) return;
+            if (_lastOverlayRectsFormCoords.Count == 0) { _flash.ClearOverlayHoles(); return; }
+            var holes = new List<Tuple<Rectangle, int>>();
+            foreach (var h in _lastOverlayRectsFormCoords)
+            {
+                var r = h.Item1;
+                holes.Add(Tuple.Create(new Rectangle(r.X - _flash.Left, r.Y - _flash.Top, r.Width, r.Height), h.Item2));
+            }
+            _flash.SetOverlayHoles(holes);
+        }
+        public void DoOverlayRects(string rectsJson, bool dockHidden, bool sheetHidden)
+        {
+            if (_flash == null) return;
+            var rects = new List<Tuple<Rectangle, int>>();
+            try
+            {
+                var arr = JArray.Parse(rectsJson ?? "[]");
+                foreach (var r in arr)
+                {
+                    int w = r.Value<int>("w"), h = r.Value<int>("h");
+                    if (w <= 0 || h <= 0) continue;
+                    int rr = (int?)r["r"] ?? 0;
+                    rects.Add(Tuple.Create(new Rectangle(r.Value<int>("x"), r.Value<int>("y"), w, h), rr));
+                }
+            }
+            catch (Exception ex) { Dbg("OverlayRects EX: " + ex.Message); }
+            _lastOverlayRectsFormCoords = rects;
+            _lastDockHidden = dockHidden;
+            _lastSheetHidden = sheetHidden;
+            Dbg("OverlayRects n=" + rects.Count + " dockHidden=" + dockHidden + " sheetHidden=" + sheetHidden + " flash=" + (_flash == null ? "-" : _flash.Bounds.ToString()) + " json=" + rectsJson);
+            ApplyOverlayHoles();
+            // Re-follow from the fresh rects so the rail nudges at once.
+            FollowGear();
+        }
+        // Theme color (#RRGGBB): paints the Flash hosting surface and the
+        // native window frame border to match, so no dark hairlines show
+        // around the preview on light backgrounds. DWMWA_BORDER_COLOR is
+        // Win11 (silently ignored older).
+        public void DoThemeColor(string hex)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(hex) || hex.Length != 7 || hex[0] != '#') return;
+                int rgb = int.Parse(hex.Substring(1), System.Globalization.NumberStyles.HexNumber);
+                var c = System.Drawing.Color.FromArgb((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255);
+                if (_flash != null) _flash.SetSurfaceColor(c);
+                int border = (c.B << 16) | (c.G << 8) | c.R;
+                DwmSetWindowAttribute(Handle, 34, ref border, sizeof(int));
+            }
+            catch (Exception ex) { Dbg("ThemeColor EX: " + ex.Message); }
+        }
         public void DoReset() { if (_flash != null) _flash.ResetFlash(); }
         public void DoLoadItem(string itemType, string itemFile, string weaponType, string link) { if (_flash != null) _flash.LoadItem(itemType, itemFile, weaponType, link); }
         public void DoDropFile(string slot, string path)
