@@ -2,8 +2,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-    <RootNamespace>FlashBoxApp</RootNamespace>
-    <AssemblyName>FlashBox</AssemblyName>
+    <RootNamespace>ManikinApp</RootNamespace>
+    <AssemblyName>Manikin</AssemblyName>
     <PlatformTarget>x86</PlatformTarget>
     <OutputPath>bin\</OutputPath>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>

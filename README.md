@@ -1,6 +1,42 @@
-# FlashBox
+# Manikin
 
-Windows preview app for AdventureQuest Worlds characters. Type a character name and it loads the avatar with the real Flash renderer, plus backgrounds, emotes, dyes and outfits to play with.
+An updated version of the original **FlashBox** preview tool — kept **disconnected
+from the game servers** and pointed at making one job easier: letting you look at
+your own art on a real character before you ship it.
+
+Type a character name (or drop in your own `.swf` files) and you get the actual
+Flash avatar rendered with real dyes, hair, armor and weapons, on any of the
+game's backgrounds, at whatever size you want to check it at. Nothing is written
+to your account and no packets are sent to the live game.
+
+## Why it exists
+
+If you draw an item for AQW, the hard part is not drawing it — it's finding out
+how it actually *looks* once it's on a character. A helm that reads fine as a
+flat PNG can vanish against a dark hair. A cape can clip through the shoulders.
+A sword that looks huge in isolation may be tiny next to the avatar.
+
+This tool answers those questions offline:
+
+- See your item rendered on the real avatar, with real dye colours applied
+- Try it in each of the six dye channels (hair / skin / eye / trim / base / accessory)
+- Check it across multiple backgrounds, at multiple scales
+- Toggle visibility per slot to isolate one item, and test both your equipped
+  and cosmetic sets
+
+## Features
+
+| | |
+|---|---|
+| **Character** | Load any existing character by name, or drop your own item SWFs onto the gear slots |
+| **Backgrounds** | All game scenes plus a custom solid colour and hex input |
+| **Size** | Independent scale for character, pet and background |
+| **Dyes** | Full HSV picker for the six dye channels, plus a theme colour for the app itself |
+| **Dagger mode** | Force dual-wield so you can check how a split weapon set sits in both hands |
+| **Drag background** | Pan the scene instead of having it locked to the stage |
+| **Emotes** | Every animation on the avatar's timeline, grouped and searchable |
+| **Gear rail** | See what you're wearing at a glance, and hide any slot with one click |
+| **Headless mode** | Scripted assertions against the renderer for testing changes |
 
 ## Requirements
 
@@ -12,15 +48,21 @@ Windows preview app for AdventureQuest Worlds characters. Type a character name 
 ## Build
 
 ```
-msbuild FlashBox.csproj /p:Configuration=Release /p:Platform=x86
+msbuild Manikin.csproj /p:Configuration=Release /p:Platform=x86
 ```
 
-The exe lands in `bin\FlashBox.exe`.
+The exe lands in `bin\Manikin.exe`.
+
+> Renamed from `FlashBox.csproj` / `FlashBox.exe`. The assembly is still
+> `Manikin`; only the project and output names changed.
 
 ## Run
 
-1. Launch `bin\FlashBox.exe`.
-2. Type a character name and hit Load.
-3. Use the side panel for backgrounds, emotes, names, colors and visibility. Drag any `.swf` onto the preview to try it on.
+1. Launch `bin\Manikin.exe`.
+2. Type a character name and hit Load — or drag any `.swf` straight onto the
+   preview to try it on.
+3. Use the side panel for backgrounds, size, dyes, emotes, settings and logs.
 
-Item art belongs to Artix Entertainment and is fetched from their servers at runtime. Personal/educational use.
+Item art, backgrounds and character data belong to Artix Entertainment and are
+used here only for personal, non-commercial previewing. This is an unofficial
+community tool and is not affiliated with or endorsed by Artix.

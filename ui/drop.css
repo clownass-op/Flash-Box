@@ -1,4 +1,4 @@
-/* ---- drop slot boxes (classic FlashBox style) ----
+/* ---- drop slot boxes (classic style) ----
    Tweak freely: labels (.drop-label), boxes (.drop-box), row layout
    (#dropBoxes .row), hover states (.cell.over). Slots themselves live in
    DROP_SLOTS at the top of drop.js. */

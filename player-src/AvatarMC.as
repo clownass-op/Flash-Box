@@ -1303,7 +1303,7 @@ package
          this.mcChar.robe.visible = _loc2_ && this.armorHasRobe;
          this.mcChar.backrobe.visible = _loc2_ && this.armorHasRobeBack;
       }
-      // Diagnostics for FlashBox --headless: a JSON snapshot of the rig
+      // Diagnostics for Manikin --headless: a JSON snapshot of the rig
       // (per-part children, visibility, dye transforms, animation label).
       public function getAvatarState() : String
       {

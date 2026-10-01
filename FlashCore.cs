@@ -10,7 +10,7 @@ using System.Xml.Linq;
 using AxShockwaveFlashObjects;
 using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
 
-namespace FlashBoxApp
+namespace ManikinApp
 {
     // FlashCore: hosts the real Flash ActiveX and the char6 avatar player
     // in-process. This is the combined-app version of FlashHost2 -- no pipe,
@@ -68,6 +68,14 @@ namespace FlashBoxApp
                 return cp;
             }
         }
+
+        // Resize cursor tolerance, shared with AppForm so the arrow and the
+        // area that actually resizes can never drift apart.
+        //
+        // The cursor itself is driven from AppForm's edge-cursor timer, not
+        // from here: the ActiveX answers WM_SETCURSOR itself and paints its
+        // own arrow, so a handler on this panel (or its parent) never runs.
+        public const int EdgeCursorTol = 10;
 
         static void NoActivateTree(IntPtr root)
         {
@@ -242,7 +250,7 @@ namespace FlashBoxApp
             try { LoadMovie(_char6); Dbg("LoadMovie done, player running"); } catch (Exception ex) { Dbg("LoadMovie EX: " + ex.Message); }
         }
 
-        // LoadMovie via OcxState (mirrors FlashBox.Extensions.LoadMovie)
+        // LoadMovie via OcxState (mirrors the classic LoadMovie helper)
         void LoadMovie(byte[] swf)
         {
             using (var ms = new MemoryStream())
@@ -266,11 +274,22 @@ namespace FlashBoxApp
         // from the male folder turned male and lost her armor).
         public string Gender { get; private set; } = "F";
 
+        // Set once the UI pins dagger mode on. While pinned, loading a weapon no
+        // longer re-decides it - otherwise the Settings toggle would silently
+        // flip back off the moment any non-dagger weapon is loaded.
+        public bool DaggerPinned { get; private set; }
+
+        // The game speaks "True"/"False" for every boolean call.
+        static bool ParseBool(string s) { return string.Equals(s, "True", StringComparison.OrdinalIgnoreCase); }
+
         public bool FlashCall(string method, string[] args)
         {
             if (_flash == null) return false;
             args = args ?? new string[0];
             if (method == "setGender" && args.Length > 0 && (args[0] == "M" || args[0] == "F")) Gender = args[0];
+            // A daggerMode call arriving from the UI is a deliberate choice, not
+            // the auto-detect, so remember it and let it outrank LoadItem.
+            if (method == "daggerMode" && args.Length > 0) DaggerPinned = ParseBool(args[0]);
             try { return Call(method, args); } catch { return false; }
         }
 
@@ -310,8 +329,9 @@ namespace FlashBoxApp
                     // incoming weapon FIRST so the load attaches correctly.
                     // No type from the CharPage: read it from the SWF itself so a
                     // gauntlet still goes on the hands, a split set on both.
+                    // DaggerPinned (the Settings toggle) outranks the auto-detect.
                     if (string.IsNullOrEmpty(weaponType)) weaponType = DetectWeaponType(bytes);
-                    bool dual = string.Equals(weaponType, "Dagger", StringComparison.OrdinalIgnoreCase);
+                    bool dual = DaggerPinned || string.Equals(weaponType, "Dagger", StringComparison.OrdinalIgnoreCase);
                     Call("daggerMode", dual ? "True" : "False");
                     if (!string.IsNullOrEmpty(weaponType))
                         Call("loadWeapon", b64, linkage ?? "", weaponType);
@@ -480,7 +500,7 @@ namespace FlashBoxApp
             catch { }
         }
 
-        // ---- Flash invoke (mirrors FlashBox.Flash.Call) ----
+        // ---- Flash invoke (mirrors the classic Flash.Call helper) ----
         bool Call(string function, params string[] args)
         {
             // Arguments are XML-escaped: item/character names routinely

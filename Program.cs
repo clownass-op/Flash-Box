@@ -3,7 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace FlashBoxApp
+namespace ManikinApp
 {
     static class Program
     {
@@ -37,17 +37,17 @@ namespace FlashBoxApp
             {
                 var ex = e.ExceptionObject as Exception;
                 Log("FATAL AppDomain: " + (ex != null ? ex.ToString() : e.ExceptionObject));
-                MessageBox.Show("FlashBox hit an unexpected error and has to close.\n\n" +
+                MessageBox.Show("Manikin hit an unexpected error and has to close.\n\n" +
                     (ex != null ? ex.Message : e.ExceptionObject.ToString()) +
                     "\n\nDetails were written to " + LogFile,
-                    "FlashBox", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    "Manikin", MessageBoxButtons.OK, MessageBoxIcon.Error);
             };
             Application.ThreadException += (s, e) =>
             {
                 Log("FATAL UI thread: " + e.Exception);
-                MessageBox.Show("FlashBox hit an unexpected error.\n\n" + e.Exception.Message +
+                MessageBox.Show("Manikin hit an unexpected error.\n\n" + e.Exception.Message +
                     "\n\nDetails were written to " + LogFile,
-                    "FlashBox", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    "Manikin", MessageBoxButtons.OK, MessageBoxIcon.Error);
             };
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
 
@@ -60,9 +60,9 @@ namespace FlashBoxApp
             catch (Exception ex)
             {
                 Log("FATAL Main: " + ex);
-                MessageBox.Show("FlashBox could not start.\n\n" + ex.Message +
+                MessageBox.Show("Manikin could not start.\n\n" + ex.Message +
                     "\n\nDetails were written to " + LogFile,
-                    "FlashBox", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    "Manikin", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             return 0;
         }

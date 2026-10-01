@@ -12,9 +12,9 @@ using System.Windows.Forms;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace FlashBoxApp
+namespace ManikinApp
 {
-    // FlashBox.exe --headless [options]
+    // Manikin.exe --headless [options]
     //
     // Runs the real app (WebView2 page + Flash ActiveX + char6 player) in an
     // offscreen window with no overlays or dialogs, executes the render
@@ -164,7 +164,7 @@ namespace FlashBoxApp
             Directory.CreateDirectory(_snapDir);
             foreach (var f in Directory.GetFiles(_snapDir, "*.png")) try { File.Delete(f); } catch { }
 
-            Log("FlashBox headless run " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            Log("Manikin headless run " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
             Log("player: " + (FlashCore.PlayerOverride ?? "flash\\char6.swf"));
             if (!await WaitUntil(() => _form.ReadyForTests && Flash != null, 60000))
             {
@@ -284,7 +284,7 @@ namespace FlashBoxApp
         static string ToMarkdown(JObject rep)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("# FlashBox headless test report");
+            sb.AppendLine("# Manikin headless test report");
             sb.AppendLine();
             sb.AppendLine("- When: " + rep["when"]);
             sb.AppendLine("- Player: `" + rep["player"] + "`");
@@ -1109,7 +1109,10 @@ namespace FlashBoxApp
             Func<string, Task<string>> field = async id => JsonConvert.DeserializeObject<string>(await Js("document.getElementById('" + id + "').value"));
             Expect(await field("nmHelm") == "Base Hat", "equipped helm name field: " + await field("nmHelm"));
             Expect(GearName("helm") == "Base Hat", "gear list helm: " + GearName("helm"));
-            await Js("document.getElementById('nameCos').click()");
+            // No checkbox in the panel any more: the cosmetic outfit is the
+            // native shirt button, which the page polls via cosSeq. Drive the
+            // same page-side toggle the poll calls.
+            await Js("toggleCosmetics()");
             await WaitUntil(() => GearName("helm") == "Cosmetic Hood", 3000);
             Expect(await field("nmHelm") == "Cosmetic Hood", "cosmetic outfit on: Names tab should show the cosmetic helm, shows " + await field("nmHelm"));
             Expect(GearName("helm") == "Cosmetic Hood", "gear list should show the cosmetic helm, shows " + GearName("helm"));
@@ -1123,7 +1126,7 @@ namespace FlashBoxApp
             await Task.Delay(100);
             Expect(GearName("helm") == "Renamed Hood", "names back on: " + GearName("helm"));
             Expect(JsonConvert.DeserializeObject<bool>(await Js("project.cosmeticsOn")), "cosmetic outfit toggle did not stick");
-            await Js("document.getElementById('nameCos').click()");
+            await Js("toggleCosmetics()");
         }
 
         // Character name tag sits above the avatar's head.
@@ -1162,21 +1165,40 @@ namespace FlashBoxApp
               document.querySelectorAll('#p-' + tab + ' .bg-pick, #p-' + tab + ' .emote-btn').forEach(b => {
                 if (b.offsetParent && b.scrollHeight > b.clientHeight + 1) out.push(tab + ': clipped chip ' + b.textContent + ' ' + b.clientHeight + '/' + b.scrollHeight);
               });
-              document.querySelectorAll('#p-' + tab + ' .wheel-node input[type=color]').forEach(i => {
-                const r = i.getBoundingClientRect();
-                if (Math.abs(r.width - r.height) > 1) out.push(tab + ': dye swatch not round ' + r.width + 'x' + r.height);
-              });
-              const br = document.getElementById('btnBrowse').getBoundingClientRect(), dr = inner.getBoundingClientRect();
-              if (tab === 'misc' && br.right > dr.right + 1) out.push('misc: Browse button cut off');
               return JSON.stringify(out);
             };
             document.querySelectorAll('.sheet').forEach(d => d.style.transition = 'none');");
             var found = new List<string>();
-            foreach (var tab in new[] { "backgrounds", "emotes", "misc", "colors", "log", "names", "monitor" })
+            // Every dock button must have a matching panel, a title and a
+            // subtitle: a tab with no panel opens as an empty sheet.
+            // Js() returns raw JSON, so booleans come back unquoted.
+            var tabs = JArray.Parse(JsonConvert.DeserializeObject<string>(await Js(
+                "JSON.stringify([...document.querySelectorAll('.dock-btn')].map(b => b.dataset.t))")));
+            foreach (var t in tabs)
+            {
+                var q = JsonConvert.ToString((string)t);
+                if (!JsonConvert.DeserializeObject<bool>(await Js("!!document.getElementById('p-' + " + q + ")")))
+                    found.Add(t + ": no #p-" + t + " panel");
+                if (JsonConvert.DeserializeObject<bool>(await Js("typeof TAB_TITLES[" + q + "] !== 'string'")))
+                    found.Add(t + ": no TAB_TITLES entry");
+            }
+            foreach (var tab in new[] { "backgrounds", "emotes", "colors", "log", "names", "monitor" })
             {
                 await JsAwait("openTab('" + tab + "')");
                 var res = JArray.Parse(JsonConvert.DeserializeObject<string>(await Js("window.__measureTab('" + tab + "')")));
                 foreach (var s in res) found.Add(s.Value<string>());
+                // Output folder row (Browse) now lives in the Names panel.
+                if (tab == "names")
+                {
+                    // Js() hands back raw JSON, so the quoted string must be
+                    // decoded before it can be reported as a failure.
+                    var cut = JsonConvert.DeserializeObject<string>(await Js(@"(() => {
+                      const br = document.getElementById('btnBrowse').getBoundingClientRect();
+                      const dr = document.querySelector('.sheet-inner').getBoundingClientRect();
+                      return (br.right > dr.right + 1 || br.width < 20) ? 'names: Browse button cut off' : '';
+                    })()"));
+                    if (!string.IsNullOrEmpty(cut)) found.Add(cut);
+                }
                 if (found.Count >= 12) break;
             }
             await Js("closeSheet()");

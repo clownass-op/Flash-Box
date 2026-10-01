@@ -6,13 +6,13 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace FlashBoxApp
+namespace ManikinApp
 {
     // Downloads: character-page fetch, FlashVars parsing, and item SWF downloads
     // (port of the Electron main.js network logic).
     class Downloads
     {
-        const string UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) FlashBox/1.0";
+        const string UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Manikin/1.0";
         internal const string GAME = "https://game.aq.com/game/gamefiles/";
 
         static readonly string[] INVALID = { "none", "undefined" };

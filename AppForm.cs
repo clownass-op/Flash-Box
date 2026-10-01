@@ -12,7 +12,7 @@ using Newtonsoft.Json.Linq;
 
 [assembly: ComVisible(true)]
 
-namespace FlashBoxApp
+namespace ManikinApp
 {
     // FbHost: COM proxy exposed to the page via AddHostObjectToScript. Uses a
     // completely different delivery path than PostWebMessageAsJson (which is
@@ -1023,6 +1023,15 @@ namespace FlashBoxApp
         bool _normalBoundsValid;
         bool _restoreFixPending;
         EdgeResizeFilter _edgeFilter; // edge resizing over the Flash surface (see below)
+        // Resize-cursor polling. The Flash ActiveX calls SetCursor itself when
+        // the mouse crosses a hotspot, so a one-shot WM_SETCURSOR handler is
+        // overwritten on the very next move - which is why the page's CSS
+        // cursor worked on the top edge and nothing showed on the other three.
+        // Re-asserting from a short timer is the approach that survives it.
+        System.Windows.Forms.Timer _cursorTimer;
+        Cursor _lastEdgeCursor;
+        volatile bool _resizing; // a native sizing loop is running
+        bool _holesDirty;         // holes were deferred during a drag
         bool _flashReady;
         bool _pageReady;
         bool _hostReadySent;
@@ -1041,7 +1050,7 @@ namespace FlashBoxApp
 
         public AppForm()
         {
-            Text = "FlashBox";
+            Text = "Manikin";
             // Real frame, custom-drawn over: the OS supplies minimize/maximize
             // animations, Aero snap, taskbar thumbnails and shadow
             // (Chrome-style). WM_NCCALCSIZE below strips the non-client area
@@ -1087,7 +1096,13 @@ namespace FlashBoxApp
                     {
                         int gy = 40 + Math.Max(0, (ClientSize.Height - 40 - _gear.Height) / 2);
                         _gear.Location = PointToScreen(new Point(12, gy));
-                        _gear.Show(this);
+                        try { _gear.Show(this); } catch { try { _gear.Show(); } catch { } }
+                        // Owned layered windows shown during startup can end up
+                        // under the Flash surface and never re-seat on their
+                        // own; the watchdog now recovers that, but a first-shot
+                        // reseat here makes startup deterministic instead of
+                        // waiting up to 2 s for it.
+                        try { _gear.BringToFront(); } catch { }
                     }
                     if (!IsDisposed && _flash != null && _flash.Visible) FollowGear();
                 }
@@ -1104,6 +1119,8 @@ namespace FlashBoxApp
             try { if (_watchdog != null) { _watchdog.Stop(); _watchdog.Dispose(); } } catch { }
             try { if (_gearAnimTimer != null) { _gearAnimTimer.Stop(); _gearAnimTimer.Dispose(); _gearAnimTimer = null; } } catch { }
             try { if (_edgeFilter != null) { Application.RemoveMessageFilter(_edgeFilter); _edgeFilter = null; } } catch { }
+            try { if (_cursorTimer != null) { _cursorTimer.Stop(); _cursorTimer.Dispose(); _cursorTimer = null; } } catch { }
+            try { if (_lastEdgeCursor != null) { Cursor.Current = Cursors.Default; _lastEdgeCursor = null; } } catch { }
             try { if (_gear != null) _gear.Close(); } catch { }
             try { if (_loader != null) _loader.Close(); } catch { }
             try { if (_mag != null) _mag.Close(); } catch { }
@@ -1130,6 +1147,14 @@ namespace FlashBoxApp
             // (async-void exceptions otherwise kill the process with no UI.)
             try { ApplyWindowRounding(); } catch { }
             try { _edgeFilter = new EdgeResizeFilter(this); Application.AddMessageFilter(_edgeFilter); } catch { }
+            // Re-assert the resize cursor over the edges (see UpdateEdgeCursor).
+            try
+            {
+                _cursorTimer = new System.Windows.Forms.Timer { Interval = 40 };
+                _cursorTimer.Tick += (o2, e2) => UpdateEdgeCursor();
+                _cursorTimer.Start();
+            }
+            catch { _cursorTimer = null; }
             // User-driven geometry only (modal sizing loop end + moves):
             // transition resizes (maximize/restore) must never overwrite it.
             _normalBounds = Bounds;
@@ -1160,7 +1185,7 @@ namespace FlashBoxApp
                 // (next to the exe) fails to start from a read-only install
                 // folder such as Program Files.
                 string profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "FlashBox", Headless ? "WebView2-headless" : "WebView2");
+                    "Manikin", Headless ? "WebView2-headless" : "WebView2");
                 var env = await CoreWebView2Environment.CreateAsync(null, profile);
                 await _web.EnsureCoreWebView2Async(env);
             }
@@ -1168,8 +1193,8 @@ namespace FlashBoxApp
             {
                 Dbg("WebView2 init failed: " + ex);
                 Alert(
-                    "FlashBox needs the WebView2 Runtime to show its control panel.\n\n" +
-                    "Install it from https://developer.microsoft.com/microsoft-edge/webview2/ and relaunch FlashBox.\n\n" +
+                    "Manikin needs the WebView2 Runtime to show its control panel.\n\n" +
+                    "Install it from https://developer.microsoft.com/microsoft-edge/webview2/ and relaunch Manikin.\n\n" +
                     "Technical detail: " + ex.Message, MessageBoxIcon.Warning);
                 return;
             }
@@ -1237,8 +1262,8 @@ namespace FlashBoxApp
                 if (!File.Exists(html))
                 {
                     Dbg("UI missing: " + html);
-                    Alert("FlashBox UI files are missing:\n" + html +
-                        "\n\nReinstall FlashBox with its ui\\ folder next to the exe.", MessageBoxIcon.Error);
+                    Alert("Manikin UI files are missing:\n" + html +
+                        "\n\nReinstall Manikin with its ui\\ folder next to the exe.", MessageBoxIcon.Error);
                     return;
                 }
                 _core.Navigate("file:///" + html.Replace('\\', '/'));
@@ -1247,14 +1272,14 @@ namespace FlashBoxApp
             catch (Exception ex)
             {
                 Dbg("Navigation failed: " + ex);
-                Alert("FlashBox could not open its control panel: " + ex.Message, MessageBoxIcon.Error);
+                Alert("Manikin could not open its control panel: " + ex.Message, MessageBoxIcon.Error);
             }
         }
 
         void Alert(string text, MessageBoxIcon icon)
         {
             if (Headless) { Dbg("ALERT: " + text); return; }
-            MessageBox.Show(this, text, "FlashBox", MessageBoxButtons.OK, icon);
+            MessageBox.Show(this, text, "Manikin", MessageBoxButtons.OK, icon);
         }
 
         void CreateOverlays()
@@ -1320,6 +1345,18 @@ namespace FlashBoxApp
                         if (!IsDisposed && _flash != null && _flash.Visible)
                         {
                             FollowGear();
+                            // The rail can also be dropped behind the Flash
+                            // surface (a windowed ActiveX, airspace
+                            // ownership). Visible-but-not-painted is the
+                            // symptom, so reseat it every tick; a hide is
+                            // respected because FollowGear only re-shows
+                            // when _overlaysHidden is clear.
+                            try
+                            {
+                                if (_gear != null && _gear.HasRows && !_gear.Visible && !_overlaysHidden)
+                                    GearSlideIn(HudOverlay.GearTargetPoint(_flash.Bounds, p => PointToScreen(p), GearRestX(_flash.Bounds), _gear.Width, _gear.Height));
+                            }
+                            catch { }
                             // Z-order insurance: if anything (Flash surface,
                             // DWM hiccup) covers the button overlays, reseat
                             // them. NOACTIVATE windows can't steal focus.
@@ -1441,31 +1478,94 @@ namespace FlashBoxApp
             FollowGear();
         }
 
-        // Rail parking, from the live holes (dock ~50px, sheet 320/430px):
-        // sheet edge + 12 while the menu is open, dock edge + 12 while the
-        // dock is open, screen edge + 12 when both are closed. _lastDockHidden
-        // /_lastSheetHidden come from the page: a hidden panel still reports
-        // its rects (the slide-path hole must stay cut while it animates
-        // out), so width inference alone would park the rail beside a panel
-        // that is gone.
+        // Rail parking, from the live holes the page reports (narrow = the
+        // dock pill, wide = the sheet): the right edge of whichever panel is
+        // showing, + 12. Both edges are measured, not hardcoded, so a
+        // restyled dock or sheet tracks automatically. _lastDockHidden /
+        // _lastSheetHidden come from the page: a hidden panel may still report
+        // its rects (a closing hole must stay cut for the duration of the
+        // animation), so width alone cannot be trusted to mean "visible".
         int GearRestX(Rectangle flashClient)
         {
             bool dockVisible = false, sheetVisible = false;
-            int sheetRight = 0;
+            int sheetRight = 0, dockRight = 0;
             foreach (var h in _lastOverlayRectsFormCoords)
             {
                 if (h.Item1.Width > 100) { sheetVisible = true; if (h.Item1.Right > sheetRight) sheetRight = h.Item1.Right; }
-                else dockVisible = true;
+                else { dockVisible = true; if (h.Item1.Right > dockRight) dockRight = h.Item1.Right; }
             }
             dockVisible = dockVisible && !_lastDockHidden;
             sheetVisible = sheetVisible && !_lastSheetHidden;
             if (sheetVisible && sheetRight > flashClient.X) return sheetRight + 12;
-            return flashClient.X + (dockVisible ? 74 : 12);
+            if (dockVisible && dockRight > flashClient.X) return dockRight + 12;
+            return flashClient.X + 12;
+        }
+
+        // Keep the resize cursor showing over the window edges.
+        //
+        // The page's transparent grips carry a CSS resize cursor, but the page
+        // only sees the mouse where the Flash surface is not on top of it, so
+        // the left, right and bottom edges got a plain arrow even though
+        // dragging there resized fine. Handling WM_SETCURSOR is not enough:
+        // the ActiveX calls SetCursor directly whenever the mouse crosses a
+        // movie hotspot, so a one-shot handler loses the very next move. A
+        // short poll that only re-asserts while the pointer is actually in an
+        // edge band survives that, and resets to Default the moment it leaves
+        // so ordinary cursors (text caret, hand) come back.
+        void UpdateEdgeCursor()
+        {
+            try
+            {
+                if (IsDisposed || !IsHandleCreated) return;
+                // Never fight another app for the cursor, and a maximized or
+                // minimized window has no edges to grab. Also stay out of the
+                // way while a sizing loop is running - poking the cursor
+                // mid-drag makes the drag stutter.
+                if (WindowState != FormWindowState.Normal || !ForegroundIsOurs() || _resizing)
+                {
+                    if (_lastEdgeCursor != null) { Cursor.Current = Cursors.Default; _lastEdgeCursor = null; }
+                    return;
+                }
+                Point c = PointToClient(Cursor.Position);
+                var r = ClientRectangle;
+                const int tol = FlashCore.EdgeCursorTol;
+                bool l = c.X < tol, rt = c.X >= r.Width - tol;
+                bool t = c.Y < tol, b = c.Y >= r.Height - tol;
+                Cursor want = null;
+                if (l || rt || t || b)
+                {
+                    bool h = l || rt, v = t || b;
+                    want = (h && v) ? ((l && t) || (rt && b) ? Cursors.SizeNWSE : Cursors.SizeNESW)
+                         : h ? Cursors.SizeWE : Cursors.SizeNS;
+                }
+                if (want == null)
+                {
+                    if (_lastEdgeCursor != null) { Cursor.Current = Cursors.Default; _lastEdgeCursor = null; }
+                    return;
+                }
+                // Assign EVERY tick, not only on change. The ActiveX overwrites
+                // the cursor on every mouse move over a hotspot, so a
+                // "set once, remember it" timer thinks it is still in place
+                // and the arrow vanishes a frame later. Re-setting the same
+                // handle is a no-op, so this cannot flicker.
+                Cursor.Current = want;
+                _lastEdgeCursor = want;
+            }
+            catch { }
         }
 
         void StopGearAnim()
         {
             try { if (_gearAnimTimer != null) _gearAnimTimer.Stop(); } catch { }
+            // A glide that never reached its Hide() (interrupted by a snap, a
+            // follow, or a close) must not leave the flag latched: it gates
+            // every later re-show, so a stale true parks the rail off-screen
+            // for the rest of the session.
+            if (_gearAnimHidePending && _gear != null && !_gear.Visible)
+            {
+                _gearAnimHidePending = false;
+                try { _gear.Hide(); } catch { }
+            }
         }
 
         void AnimateGearTo(Point screenTarget, bool hideOnArrive = false)
@@ -1524,7 +1624,13 @@ namespace FlashBoxApp
             if (!_gear.Visible)
             {
                 try { _gear.Location = new Point(rest.X - _gear.Width - 8, rest.Y); } catch { }
-                try { if (!IsDisposed && _gear.Owner != this) _gear.Show(this); } catch { try { _gear.Show(); } catch { } }
+                // Show() has to be called whether or not we already own the
+                // window. Guarding the call on "not yet owned" skipped it
+                // entirely once the owner was set - no exception, so the catch
+                // never fired either - and the rail could never come back after
+                // a hide. Passing the owner only helps the first time.
+                try { if (!IsDisposed && _gear.Owner != this) _gear.Show(this); else _gear.Show(); }
+                catch { try { _gear.Show(); } catch { } }
             }
             AnimateGearTo(rest);
         }
@@ -1557,6 +1663,12 @@ namespace FlashBoxApp
                 if (geomMoved || !_gear.Visible) { try { _gear.Location = target; } catch { } StopGearAnim(); }
                 else if (!_gearAnimHidePending) AnimateGearTo(target); // never fight a slide-out
                 if (_gear.HasRows && !_gear.Visible && !_gearAnimHidePending) GearSlideIn(target);
+                // The rail is a native layered window competing with the
+                // ActiveX for z-order, and WinForms can drop it behind the
+                // Flash surface on startup (owned layered windows shown
+                // before the owner is really on screen never re-seat
+                // themselves). Visible-but-empty is the symptom, so re-show it
+                // whenever it is somehow not on screen.
             }
             // Shirt button tracks the preview's bottom-right corner
             // (CharPage parity), independent of the gear list.
@@ -1793,14 +1905,28 @@ namespace FlashBoxApp
                     if (f.WindowState != FormWindowState.Normal) return false;
                     if (!f.IsFlashWindow(m.HWnd)) return false;
                     Point c = f.PointToClient(Cursor.Position);
-                    const int tol = 6;
+                    // 6px was a 3px target in practice (the window rect
+                    // includes the stripped frame, so the usable band is half
+                    // the tolerance), which reads as "cannot resize".
+                    // 10px matches what a normal window border gives you, and
+                    // matches FlashCore.EdgeCursorTol so the resize arrow
+                    // shows over exactly the strip that resizes.
+                    const int tol = FlashCore.EdgeCursorTol;
                     bool l = c.X < tol;
                     bool r = c.X >= f.ClientSize.Width - tol;
                     bool b = c.Y >= f.ClientSize.Height - tol;
                     if (!l && !r && !b) return false;
                     int ht = b ? (l ? 16 : r ? 17 : 15) : (l ? 10 : 11);
-                    ReleaseCapture();
-                    SendMessage(f.Handle, WM_NCLBUTTONDOWN, ht, IntPtr.Zero);
+                    // SendMessage runs the modal sizing loop inline, so this
+                    // flag is up for the whole drag: the edge-cursor poll
+                    // stands down while the user is resizing.
+                    f._resizing = true;
+                    try
+                    {
+                        ReleaseCapture();
+                        SendMessage(f.Handle, WM_NCLBUTTONDOWN, ht, IntPtr.Zero);
+                    }
+                    finally { f.EndResize(); }
                     return true;
                 }
                 catch { return false; }
@@ -1847,8 +1973,27 @@ namespace FlashBoxApp
                 case "bottomright": ht = 17; break;
                 default: return;
             }
-            ReleaseCapture();
-            SendMessage(Handle, WM_NCLBUTTONDOWN, ht, IntPtr.Zero);
+            // Same as the message-filter path: hold the flag across the modal
+            // sizing loop so the edge-cursor poll stays out of the drag.
+            _resizing = true;
+            try
+            {
+                ReleaseCapture();
+                SendMessage(Handle, WM_NCLBUTTONDOWN, ht, IntPtr.Zero);
+            }
+            finally { EndResize(); }
+        }
+
+        // Leave a sizing loop: clear the flag and flush whatever the drag
+        // deferred. Called from the finally of both resize entry points.
+        void EndResize()
+        {
+            _resizing = false;
+            if (_holesDirty)
+            {
+                _holesDirty = false;
+                try { ApplyOverlayHoles(); } catch { }
+            }
         }
 
         public bool IsMaximized { get { return WindowState == FormWindowState.Maximized; } }
@@ -1861,12 +2006,29 @@ namespace FlashBoxApp
         public void DoSetOverlaysHidden(bool hidden)
         {
             _overlaysHidden = hidden;
-            if (hidden) GearSlideOut();
-            foreach (Form f in new Form[] { _cos, _mag })
+            if (hidden)
             {
-                try { if (f != null && hidden && f.Visible) f.Hide(); } catch { }
+                GearSlideOut();
+                foreach (Form f in new Form[] { _cos, _mag })
+                {
+                    try { if (f != null && f.Visible) f.Hide(); } catch { }
+                }
             }
-            if (!hidden) FollowGear();
+            else
+            {
+                // Un-hiding inside the slide-out glide: the pending flag makes
+                // FollowGear skip both the re-show and the re-glide, and the
+                // glide then lands its Hide() - leaving the rail gone with no
+                // way back. Cancel the exit and re-assert the overlays, which
+                // also repairs a rail that went missing some other way.
+                StopGearAnim();
+                _gearAnimHidePending = false;
+                foreach (Form f in new Form[] { _cos, _mag })
+                {
+                    try { if (f != null && f.IsHandleCreated) f.Show(this); } catch { try { if (f != null) f.Show(); } catch { } }
+                }
+                FollowGear();
+            }
         }
         // Full-menu dock starts closed for a clean preview (toggled by the
         // titlebar settings button); the gear rail itself always shows.
@@ -1918,9 +2080,12 @@ namespace FlashBoxApp
             // landing would fight a mid-flight re-show (watchdog tick).
             if (!_gearAnimHidePending)
             {
+                // Same reasoning as GearSlideIn: Show() must run even when we
+                // already own the window, or a rail hidden by a menu toggle
+                // never comes back when the page re-reports its rows.
                 try
                 {
-                    if (!IsDisposed && _gear.Owner != this) _gear.Show(this);
+                    if (!IsDisposed && _gear.Owner != this) _gear.Show(this); else _gear.Show();
                 }
                 catch { try { _gear.Show(); } catch { } }
             }
@@ -2007,14 +2172,27 @@ namespace FlashBoxApp
         bool _lastDockHidden;
         bool _lastSheetHidden;
 
+        // Every hole is cut to EXACTLY the rect the page reported: no outset,
+        // no overshoot. An outset sounds like it would hide the region's
+        // aliased edge, but the gap it opens is page background showing through
+        // the hole - a gray frame around every panel, which is far more obvious
+        // than a slightly stair-stepped silhouette. Exact is the only value
+        // where the panel covers its hole completely and nothing else does.
         void ApplyOverlayHoles()
         {
             if (_flash == null) return;
+            // Assigning a window region forces a full repaint of the Flash
+            // surface. During a resize drag the page re-reports its rects on
+            // every frame, so applying each one repaints the whole preview
+            // dozens of times a second - that is the stutter. Hold the update
+            // until the drag settles; EndResize applies the final one.
+            if (_resizing) { _holesDirty = true; return; }
             if (_lastOverlayRectsFormCoords.Count == 0) { _flash.ClearOverlayHoles(); return; }
             var holes = new List<Tuple<Rectangle, int>>();
             foreach (var h in _lastOverlayRectsFormCoords)
             {
                 var r = h.Item1;
+                if (r.Width <= 0 || r.Height <= 0) continue;
                 holes.Add(Tuple.Create(new Rectangle(r.X - _flash.Left, r.Y - _flash.Top, r.Width, r.Height), h.Item2));
             }
             _flash.SetOverlayHoles(holes);
@@ -2035,6 +2213,19 @@ namespace FlashBoxApp
                 }
             }
             catch (Exception ex) { Dbg("OverlayRects EX: " + ex.Message); }
+            // Any hole at all is useless: the gear rail is a native layered
+            // window drawn on top, and the dock/sheet holes are reported
+            // whenever they are up. An empty list can only mean a hole was
+            // dropped while its panel stayed on screen, which leaves a dead
+            // rectangle of page background stamped over the scene (the rail
+            // then cannot be re-shown either - nothing ever cuts it back).
+            // Refuse to believe it and keep the last good set.
+            if (rects.Count == 0 && _lastOverlayRectsFormCoords.Count > 0 &&
+                !(dockHidden && sheetHidden))
+            {
+                Dbg("OverlayRects: ignoring empty set (panels still up) - keeping " + _lastOverlayRectsFormCoords.Count);
+                return;
+            }
             _lastOverlayRectsFormCoords = rects;
             _lastDockHidden = dockHidden;
             _lastSheetHidden = sheetHidden;
@@ -2043,10 +2234,13 @@ namespace FlashBoxApp
             // Re-follow from the fresh rects so the rail nudges at once.
             FollowGear();
         }
-        // Theme color (#RRGGBB): paints the Flash hosting surface and the
-        // native window frame border to match, so no dark hairlines show
-        // around the preview on light backgrounds. DWMWA_BORDER_COLOR is
-        // Win11 (silently ignored older).
+        // Theme color (#RRGGBB): paints the Flash hosting surface, the form's
+        // own background and the native window frame border to match, so no
+        // dark hairlines show around the preview. The form matters too: a
+        // single unpainted row between the page and the ActiveX (the seam just
+        // under the title bar) shows whatever the form is painted with, and it
+        // was still the hardcoded dark UiBg. DWMWA_BORDER_COLOR is Win11
+        // (silently ignored older).
         public void DoThemeColor(string hex)
         {
             try
@@ -2055,6 +2249,7 @@ namespace FlashBoxApp
                 int rgb = int.Parse(hex.Substring(1), System.Globalization.NumberStyles.HexNumber);
                 var c = System.Drawing.Color.FromArgb((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255);
                 if (_flash != null) _flash.SetSurfaceColor(c);
+                try { BackColor = c; } catch { }
                 int border = (c.B << 16) | (c.G << 8) | c.R;
                 DwmSetWindowAttribute(Handle, 34, ref border, sizeof(int));
             }
@@ -2105,8 +2300,8 @@ namespace FlashBoxApp
         {
             using (var dlg = new SaveFileDialog
             {
-                Filter = "FlashBox project (*.fbp)|*.fbp|JSON (*.json)|*.json|All files (*.*)|*.*",
-                FileName = string.IsNullOrEmpty(defaultName) ? "flashbox.fbp" : defaultName,
+                Filter = "Manikin project (*.fbp)|*.fbp|JSON (*.json)|*.json|All files (*.*)|*.*",
+                FileName = string.IsNullOrEmpty(defaultName) ? "manikin.fbp" : defaultName,
                 AddExtension = true
             })
             {
@@ -2120,7 +2315,7 @@ namespace FlashBoxApp
         {
             using (var dlg = new OpenFileDialog
             {
-                Filter = "FlashBox project (*.fbp)|*.fbp|JSON (*.json)|*.json|All files (*.*)|*.*"
+                Filter = "Manikin project (*.fbp)|*.fbp|JSON (*.json)|*.json|All files (*.*)|*.*"
             })
             {
                 if (dlg.ShowDialog(this) != DialogResult.OK) return "";

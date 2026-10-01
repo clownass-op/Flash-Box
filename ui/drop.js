@@ -1,4 +1,4 @@
-/* ---- drag-and-drop SWF loading (classic FlashBox slot boxes) ----
+/* ---- drag-and-drop SWF loading (classic slot boxes) ----
    Drop .swf files anywhere on the side panel: a row of slot boxes appears.
    Drop onto a box and each file loads straight into the player (never saved
    to disk). Weapon type for split sets is auto-detected by the host.
