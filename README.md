@@ -1,28 +1,11 @@
 # Manikin
 
-An updated version of the original **FlashBox** preview tool — kept **disconnected
-from the game servers** and pointed at making one job easier: letting you look at
-your own art on a real character before you ship it.
+An updated version of the original **FlashBox** — the disconnected FlashBox
+preview tool for AdventureQuest Worlds item art.
 
 Type a character name (or drop in your own `.swf` files) and you get the actual
 Flash avatar rendered with real dyes, hair, armor and weapons, on any of the
-game's backgrounds, at whatever size you want to check it at. Nothing is written
-to your account and no packets are sent to the live game.
-
-## Why it exists
-
-If you draw an item for AQW, the hard part is not drawing it — it's finding out
-how it actually *looks* once it's on a character. A helm that reads fine as a
-flat PNG can vanish against a dark hair. A cape can clip through the shoulders.
-A sword that looks huge in isolation may be tiny next to the avatar.
-
-This tool answers those questions offline:
-
-- See your item rendered on the real avatar, with real dye colours applied
-- Try it in each of the six dye channels (hair / skin / eye / trim / base / accessory)
-- Check it across multiple backgrounds, at multiple scales
-- Toggle visibility per slot to isolate one item, and test both your equipped
-  and cosmetic sets
+game's backgrounds, at whatever size you want to check it at.
 
 ## Features
 
