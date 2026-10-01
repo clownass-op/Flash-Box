@@ -36,9 +36,6 @@ msbuild Manikin.csproj /p:Configuration=Release /p:Platform=x86
 
 The exe lands in `bin\Manikin.exe`.
 
-> Renamed from `FlashBox.csproj` / `FlashBox.exe`. The assembly is still
-> `Manikin`; only the project and output names changed.
-
 ## Run
 
 1. Launch `bin\Manikin.exe`.
@@ -46,6 +43,12 @@ The exe lands in `bin\Manikin.exe`.
    preview to try it on.
 3. Use the side panel for backgrounds, size, dyes, emotes, settings and logs.
 
-Item art, backgrounds and character data belong to Artix Entertainment and are
-used here only for personal, non-commercial previewing. This is an unofficial
-community tool and is not affiliated with or endorsed by Artix.
+## Disclaimer
+
+This project is an unofficial, independent community project. It has **no
+affiliation with, and is not endorsed by, Artix Entertainment** or **the original
+FlashBox** and its authors.
+
+AdventureQuest Worlds, along with its art, backgrounds and character data, belongs
+to Artix Entertainment and is used here only for personal, non-commercial
+previewing.
