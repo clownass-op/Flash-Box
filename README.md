@@ -1,6 +1,6 @@
 # Manikin
 
-An updated version of the original **FlashBox** — the disconnected FlashBox
+An updated version of the original **FlashBox**
 preview tool for AdventureQuest Worlds item art.
 
 Type a character name (or drop in your own `.swf` files) and you get the actual
